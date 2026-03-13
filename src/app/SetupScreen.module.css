@@ -1,0 +1,126 @@
+.screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-deep);
+}
+
+.card {
+  width: 440px;
+  max-width: 90vw;
+  padding: 40px;
+  background: var(--bg-panel);
+  backdrop-filter: blur(var(--blur));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  text-align: center;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, var(--accent), #B39DDB);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: 32px;
+  line-height: 1.5;
+}
+
+.field {
+  text-align: left;
+  margin-bottom: 16px;
+}
+
+.label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.input {
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.input:focus { border-color: var(--accent); }
+.input::placeholder { color: var(--text-muted); }
+
+.hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.hint a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.error {
+  color: var(--red);
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.btnPrimary {
+  padding: 12px 24px;
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.btnPrimary:hover { background: var(--accent-hover); }
+
+.btnSecondary {
+  display: block;
+  padding: 10px 24px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: center;
+  transition: all var(--transition);
+}
+
+.btnSecondary:hover {
+  color: var(--text);
+  border-color: var(--border-hover);
+}

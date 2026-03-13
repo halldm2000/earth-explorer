@@ -1,0 +1,32 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --accent: #4FC3F7;
+  --accent-hover: #81D4FA;
+  --bg-deep: #0a0c12;
+  --bg-panel: rgba(10, 12, 18, 0.82);
+  --border: rgba(255, 255, 255, 0.06);
+  --text: #e8eaed;
+  --text-secondary: rgba(255, 255, 255, 0.55);
+  --text-muted: rgba(255, 255, 255, 0.3);
+  --red: #EF5350;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --radius-sm: 8px;
+  --blur: 20px;
+  --transition: 0.2s ease;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg-deep);
+  color: var(--text);
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+}
+
+#root { height: 100%; width: 100%; }
+
+/* Hide all Cesium chrome */
+.cesium-viewer-bottom { display: none !important; }
+.cesium-credit-logoContainer { display: none !important; }
