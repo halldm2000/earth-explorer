@@ -84,6 +84,14 @@ When a feature module is loaded (say, flood simulation), it registers:
 
 The AI intent router matches user requests to registered features. If no feature matches, the AI says so and suggests what's available. If a feature is unloaded, its intents simply stop matching. No orphaned buttons, no grayed-out menus.
 
+## Command Registry
+
+Commands live in three layers. Core commands (navigation, view controls, audio, settings, help) are always available and ship with the app. Feature commands are registered dynamically when a module loads and disappear when it unloads. User commands (macros, saved workflows) are defined by the user at runtime.
+
+All three layers feed into the same registry, which is the single source of truth for "what can this app do right now." The intent router matches against it, autocomplete draws from it, and "what can you do?" summarizes it. Each entry declares its intent patterns, parameters, handler, and which module owns it.
+
+The registry is append/remove only. Loading a feature appends its commands. Unloading removes them. No central manifest to maintain.
+
 ## Discoverability
 
 Without visible buttons, users need other ways to learn what's possible:

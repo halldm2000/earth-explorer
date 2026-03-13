@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as Cesium from 'cesium'
 import { useStore } from '@/store'
+import { setViewer } from './engine'
 
 const HOME = { lon: 10, lat: 30, height: 15_000_000, heading: 0, pitch: -90 }
 
@@ -37,6 +38,7 @@ export function CesiumViewer() {
 
       if (disposed) { viewer.destroy(); return }
       viewerRef.current = viewer
+      setViewer(viewer)
 
       // Terrain
       try {
@@ -44,18 +46,23 @@ export function CesiumViewer() {
       } catch (e) { console.warn('Terrain failed:', e) }
       if (disposed) return
 
-      // Buildings
-      try {
-        if (googleMapsKey) {
+      // Buildings (try Google Photorealistic first, fall back to OSM)
+      let buildingsLoaded = false
+      if (googleMapsKey) {
+        try {
           const t = await Cesium.Cesium3DTileset.fromUrl(
             `https://tile.googleapis.com/v1/3dtiles/root.json?key=${googleMapsKey}`
           )
           viewer.scene.primitives.add(t)
-        } else {
+          buildingsLoaded = true
+        } catch (e) { console.warn('Google 3D Tiles failed, falling back to OSM:', e) }
+      }
+      if (!buildingsLoaded) {
+        try {
           const osm = await Cesium.Cesium3DTileset.fromIonAssetId(96188)
           viewer.scene.primitives.add(osm)
-        }
-      } catch (e) { console.warn('Buildings failed:', e) }
+        } catch (e) { console.warn('OSM Buildings also failed:', e) }
+      }
       if (disposed) return
 
       // Scene config
@@ -64,7 +71,7 @@ export function CesiumViewer() {
       scene.fog.enabled = true
       scene.fog.density = 2.0e-4
       scene.globe.showGroundAtmosphere = true
-      scene.skyAtmosphere.show = true
+      if (scene.skyAtmosphere) scene.skyAtmosphere.show = true
       scene.globe.baseColor = Cesium.Color.fromCssColorString('#0a0c12')
       scene.globe.depthTestAgainstTerrain = true
 
@@ -109,6 +116,7 @@ export function CesiumViewer() {
 
     return () => {
       disposed = true
+      setViewer(null)
       if (viewerRef.current) {
         viewerRef.current.destroy()
         viewerRef.current = null
@@ -184,7 +192,9 @@ function setupKeyboard(viewer: Cesium.Viewer) {
   const flags: Record<string, boolean> = {}
 
   document.addEventListener('keydown', (e) => {
-    if (e.target instanceof HTMLInputElement) return
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+    // Don't capture keys used by the chat panel
+    if (e.key === '`' || e.key === '/' || e.key === 'Tab' || e.key === 'Escape') return
     flags[e.key.toLowerCase()] = true
 
     // R = reset view

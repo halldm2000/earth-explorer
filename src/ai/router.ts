@@ -1,0 +1,186 @@
+/**
+ * Intent Router
+ *
+ * Processes user input through a tiered priority chain:
+ *   Tier 0: Pattern matching against registry (instant)
+ *   Tier 1: Local classifier (future, for ambiguous inputs)
+ *   Tier 2: Local conversational model (future)
+ *   Tier 3: Cloud reasoning model (Claude)
+ *
+ * Currently implements Tier 0 + Tier 3 (cloud fallback).
+ */
+
+import { registry } from './registry'
+import type { AIProvider, CommandEntry, RouteResult, ChatMessage, ChatOptions } from './types'
+
+/** Active providers, checked in order */
+let providers: AIProvider[] = []
+
+export function registerProvider(provider: AIProvider): void {
+  providers.push(provider)
+  // Sort: browser first (fastest), then local, then cloud
+  const order = { browser: 0, local: 1, cloud: 2 }
+  providers.sort((a, b) => order[a.tier] - order[b.tier])
+}
+
+export function removeProvider(name: string): void {
+  providers = providers.filter(p => p.name !== name)
+}
+
+export function getProviders(): AIProvider[] {
+  return [...providers]
+}
+
+/**
+ * Route user input through the tier chain.
+ * Returns the result (matched command or chat response).
+ */
+export async function route(input: string): Promise<RouteResult> {
+  const trimmed = input.trim()
+  if (!trimmed) {
+    return { tier: 'pattern', params: {} }
+  }
+
+  // --- Tier 0: Pattern matching ---
+  const patternMatch = matchPattern(trimmed, registry.getAll())
+  if (patternMatch) {
+    // Execute the command
+    console.log('[router] Tier 0 match:', patternMatch.command.id, patternMatch.params)
+    try {
+      await patternMatch.command.handler(patternMatch.params)
+    } catch (err) {
+      console.error('[router] Command handler error:', err)
+    }
+    return {
+      tier: 'pattern',
+      command: patternMatch.command,
+      params: patternMatch.params,
+    }
+  }
+
+  // --- Tier 3: Cloud chat (skip Tier 1/2 for now) ---
+  const chatProvider = await findChatProvider()
+  if (chatProvider) {
+    const systemPrompt = buildSystemPrompt()
+    const messages: ChatMessage[] = [
+      { role: 'user', content: trimmed },
+    ]
+    const response = chatProvider.chat(messages, { systemPrompt })
+    return {
+      tier: 'cloud-chat',
+      response,
+    }
+  }
+
+  // No provider available, return a static message
+  return {
+    tier: 'pattern',
+    response: (async function* () {
+      yield "I can't process that right now (no AI provider configured). Try a direct command like 'go to Berlin' or type 'help' for available commands."
+    })(),
+  }
+}
+
+// --- Tier 0: Pattern matching ---
+
+interface PatternMatch {
+  command: CommandEntry
+  params: Record<string, unknown>
+  score: number
+}
+
+function matchPattern(input: string, commands: CommandEntry[]): PatternMatch | null {
+  const lower = input.toLowerCase()
+  let best: PatternMatch | null = null
+
+  for (const cmd of commands) {
+    for (const pattern of cmd.patterns) {
+      const result = tryMatch(lower, pattern, cmd)
+      if (result && (!best || result.score > best.score)) {
+        best = result
+      }
+    }
+  }
+
+  return best
+}
+
+/**
+ * Try to match user input against a pattern like "go to {place}".
+ * Returns extracted params and a confidence score.
+ */
+function tryMatch(input: string, pattern: string, cmd: CommandEntry): PatternMatch | null {
+  const patternLower = pattern.toLowerCase()
+
+  // Extract param placeholders from pattern
+  const paramNames: string[] = []
+  const regexStr = patternLower.replace(/\{(\w+)\}/g, (_match, name) => {
+    paramNames.push(name)
+    return '(.+?)'
+  })
+
+  // Exact match (no params)
+  if (paramNames.length === 0) {
+    if (input === patternLower) {
+      return { command: cmd, params: {}, score: 1.0 }
+    }
+    // Prefix match with lower score
+    if (input.startsWith(patternLower) || patternLower.startsWith(input)) {
+      const overlap = Math.min(input.length, patternLower.length)
+      const maxLen = Math.max(input.length, patternLower.length)
+      return { command: cmd, params: {}, score: overlap / maxLen * 0.8 }
+    }
+    return null
+  }
+
+  // Regex match with params
+  // Make the last param greedy (capture rest of string)
+  const greedyRegex = regexStr.replace(/\(\.\+\?\)$/, '(.+)')
+  const regex = new RegExp(`^${greedyRegex}$`)
+  const match = input.match(regex)
+
+  if (match) {
+    const params: Record<string, unknown> = {}
+    for (let i = 0; i < paramNames.length; i++) {
+      const raw = match[i + 1]?.trim()
+      const paramDef = cmd.params.find(p => p.name === paramNames[i])
+      if (paramDef?.type === 'number') {
+        params[paramNames[i]] = parseFloat(raw)
+      } else {
+        params[paramNames[i]] = raw
+      }
+    }
+    // Longer patterns are more specific, give higher score
+    return { command: cmd, params, score: 0.9 + (pattern.length / 200) }
+  }
+
+  return null
+}
+
+// --- Provider selection ---
+
+async function findChatProvider(): Promise<AIProvider | null> {
+  for (const provider of providers) {
+    if (await provider.available()) {
+      return provider
+    }
+  }
+  return null
+}
+
+// --- System prompt for chat providers ---
+
+function buildSystemPrompt(): string {
+  const commands = registry.getAll()
+  const commandList = commands.map(c => `- ${c.name}: ${c.description}`).join('\n')
+
+  return `You are an AI assistant embedded in Earth Explorer, an interactive 3D globe application.
+You help users explore and understand Earth through data visualization, scientific analysis, and natural conversation.
+
+You have access to these commands (execute them by including the exact command in your response):
+${commandList}
+
+When users ask about a location, scientific concept, or data, provide clear and informative responses.
+Keep responses concise when the chat panel is small. Be more detailed when the user is in research mode.
+You are knowledgeable about Earth science, meteorology, climate, geography, and remote sensing.`
+}

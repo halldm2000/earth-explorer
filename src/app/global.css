@@ -30,3 +30,9 @@ body {
 /* Hide all Cesium chrome */
 .cesium-viewer-bottom { display: none !important; }
 .cesium-credit-logoContainer { display: none !important; }
+
+/* Chat panel animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
