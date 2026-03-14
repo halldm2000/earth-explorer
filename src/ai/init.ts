@@ -8,6 +8,7 @@ import { registerProvider, removeProvider } from './router'
 import { coreCommands } from './core-commands'
 import { ClaudeProvider } from './providers/claude'
 import { initWeather } from '@/features/weather'
+import { initLayers } from '@/features/layers'
 
 let commandsRegistered = false
 let claudeAdded = false
@@ -20,6 +21,7 @@ export function initAI(options?: { anthropicKey?: string | null }): void {
 
     // Initialize feature modules
     initWeather()
+    initLayers()
   }
 
   // Add Claude provider if key is available and we haven't already

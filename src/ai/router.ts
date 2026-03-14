@@ -145,13 +145,13 @@ function tryMatch(input: string, pattern: string, cmd: CommandEntry): PatternMat
   // Exact match (no params)
   if (paramNames.length === 0) {
     if (input === patternLower) {
-      return { command: cmd, params: {}, score: 1.0 }
+      return { command: cmd, params: { _raw: input }, score: 1.0 }
     }
     // Prefix match with lower score
     if (input.startsWith(patternLower) || patternLower.startsWith(input)) {
       const overlap = Math.min(input.length, patternLower.length)
       const maxLen = Math.max(input.length, patternLower.length)
-      return { command: cmd, params: {}, score: overlap / maxLen * 0.8 }
+      return { command: cmd, params: { _raw: input }, score: overlap / maxLen * 0.8 }
     }
     return null
   }
@@ -163,7 +163,7 @@ function tryMatch(input: string, pattern: string, cmd: CommandEntry): PatternMat
   const match = input.match(regex)
 
   if (match) {
-    const params: Record<string, unknown> = {}
+    const params: Record<string, unknown> = { _raw: input }
     for (let i = 0; i < paramNames.length; i++) {
       const raw = match[i + 1]?.trim()
       const paramDef = cmd.params.find(p => p.name === paramNames[i])
@@ -214,5 +214,8 @@ Your role:
 - Be direct and informative, not chatty
 
 Weather overlay:
-The app can display live weather data on the globe via Open-Meteo. Users can say "show weather" or "show temperature" to see a colored grid overlay. Available variables: temperature (°C), wind speed (m/s), precipitation (mm), humidity (%), cloud cover (%), and pressure (hPa). Users can switch between variables ("switch to wind") or hide the overlay ("hide weather"). When discussing weather patterns visible in the overlay, reference the colormap so users can interpret what they see.`
+The app can display live weather data on the globe via Open-Meteo. Users can say "show weather" or "show temperature" to see a colored grid overlay. Available variables: temperature (°C), wind speed (m/s), precipitation (mm), humidity (%), cloud cover (%), and pressure (hPa). Users can switch between variables ("switch to wind") or hide the overlay ("hide weather"). When discussing weather patterns visible in the overlay, reference the colormap so users can interpret what they see.
+
+Data layers:
+The app supports toggleable vector overlays from Natural Earth. Available layers: country borders (yellow), coastlines (cyan), major rivers (blue). Users can say "show borders", "toggle coastlines", "hide rivers", "list layers", etc. More layers (satellite imagery, NASA GIBS, NOAA weather) can be added over time.`
 }
