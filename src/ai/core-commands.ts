@@ -6,7 +6,7 @@
 import * as Cesium from 'cesium'
 import type { CommandEntry } from './types'
 import { getViewer } from '@/scene/engine'
-import { toggleMute, isMuted } from '@/audio/sounds'
+import { toggleMute, isMuted, playRumble } from '@/audio/sounds'
 
 // --- Navigation commands ---
 
@@ -29,6 +29,7 @@ const goTo: CommandEntry = {
     }
     const place = String(params.place).trim()
     console.log('[go-to] Flying to:', place)
+    playRumble()
 
     try {
       // Check for raw coordinates like "10, 52" or "10.5 52.3"
@@ -100,6 +101,7 @@ const resetView: CommandEntry = {
   handler: () => {
     const viewer = getViewer()
     if (!viewer) return
+    playRumble()
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(10, 30, 15_000_000),
       orientation: {
@@ -123,6 +125,7 @@ const zoomIn: CommandEntry = {
   handler: () => {
     const viewer = getViewer()
     if (!viewer) return
+    playRumble()
     const pos = viewer.camera.positionCartographic
     const newHeight = Math.max(pos.height * 0.4, 100) // don't go below 100m
     viewer.camera.flyTo({
@@ -148,6 +151,7 @@ const zoomOut: CommandEntry = {
   handler: () => {
     const viewer = getViewer()
     if (!viewer) return
+    playRumble()
     const pos = viewer.camera.positionCartographic
     const newHeight = Math.min(pos.height * 2.5, 30_000_000) // don't go past orbit
     viewer.camera.flyTo({
@@ -173,6 +177,7 @@ const faceNorth: CommandEntry = {
   handler: () => {
     const viewer = getViewer()
     if (!viewer) return
+    playRumble()
     const pos = viewer.camera.positionCartographic
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromRadians(pos.longitude, pos.latitude, pos.height),

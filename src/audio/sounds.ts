@@ -227,20 +227,12 @@ export function playError(): void {
 //   Low speed = low frequency rumble, high speed = higher-pitched wind.
 // ============================================
 
-let flightPlaying = false
-let flightCooldownUntil = 0
-
-/**
- * Fire a one-shot low rumble (1.5s). Lowpass white noise at 191Hz, Q 0.7, vol 0.42.
- * Triggered once when movement starts, plays to completion, ignores further calls until done.
- */
-function fireRumble(): void {
+/** One-shot low rumble (1.5s). Lowpass white noise at 191Hz, Q 0.7, vol 0.42. */
+export function playRumble(): void {
   const ctx = getCtx()
   if (ctx.state !== 'running') return
 
-  flightPlaying = true
   const dur = 1.5
-
   const bufferSize = ctx.sampleRate * dur
   const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
   const data = buffer.getChannelData(0)
@@ -264,23 +256,4 @@ function fireRumble(): void {
   filter.connect(gain)
   gain.connect(getEffectsGain())
   source.start()
-  source.onended = () => {
-    flightPlaying = false
-    flightCooldownUntil = performance.now() + 2000 // 2s cooldown after rumble ends
-  }
-}
-
-/**
- * Called every frame from the render loop. Fires a single rumble
- * when movement begins; ignores calls while the rumble is still playing.
- */
-export function updateFlightSound(speed: number): void {
-  if (speed > 0.001 && !flightPlaying && performance.now() > flightCooldownUntil) {
-    fireRumble()
-  }
-}
-
-/** No-op (kept for API compatibility). */
-export function stopFlightSound(): void {
-  flightPlaying = false
 }

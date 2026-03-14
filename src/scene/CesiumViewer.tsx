@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import * as Cesium from 'cesium'
 import { useStore } from '@/store'
 import { setViewer } from './engine'
-import { updateFlightSound } from '@/audio/sounds'
 
 const HOME = { lon: 10, lat: 30, height: 15_000_000, heading: 0, pitch: -90 }
 
@@ -91,10 +90,7 @@ export function CesiumViewer() {
         },
       })
 
-      // Camera status sync + flight sound
-      let prevPos = Cesium.Cartesian3.clone(viewer.camera.position)
-      let prevTime = performance.now()
-
+      // Camera status sync
       scene.postRender.addEventListener(() => {
         const c = viewer.camera.positionCartographic
         if (c) {
@@ -104,25 +100,6 @@ export function CesiumViewer() {
             alt: c.height,
             heading: Cesium.Math.toDegrees(viewer.camera.heading),
           })
-        }
-
-        // Measure camera velocity for flight sound
-        const now = performance.now()
-        const dt = (now - prevTime) / 1000 // seconds
-        prevTime = now
-
-        if (dt > 0 && dt < 0.5) { // skip huge gaps (tab unfocused, etc.)
-          const curPos = viewer.camera.position
-          const dist = Cesium.Cartesian3.distance(prevPos, curPos)
-          const velocity = dist / dt // meters per second
-
-          // Normalize: at altitude, flying across the globe moves millions of m/s.
-          // Scale relative to current altitude so the sound feels consistent.
-          const alt = c ? c.height : 1000
-          const normalizedSpeed = Math.min(velocity / Math.max(alt * 2, 1000), 1)
-
-          updateFlightSound(normalizedSpeed)
-          Cesium.Cartesian3.clone(curPos, prevPos)
         }
       })
 
