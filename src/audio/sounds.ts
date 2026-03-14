@@ -112,28 +112,25 @@ export function playSnap(): void {
   source.start()
 }
 
-/** Rising ding (data loaded). Three ascending sine tones in quick succession. */
+/** Data ready tone. Sine 307→310Hz, 0.8s, vol 0.3. */
 export function playSuccess(): void {
   const ctx = getCtx()
   if (ctx.state !== 'running') return
 
-  const notes = [400, 500, 630]
-  notes.forEach((freq, i) => {
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = 'sine'
-    osc.frequency.value = freq
+  const osc = ctx.createOscillator()
+  const gain = ctx.createGain()
 
-    const t = ctx.currentTime + i * 0.08
-    gain.gain.setValueAtTime(0, Math.max(0, t - 0.01))
-    gain.gain.setValueAtTime(0.2, t)
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15)
+  osc.type = 'sine'
+  osc.frequency.setValueAtTime(307, ctx.currentTime)
+  osc.frequency.exponentialRampToValueAtTime(310, ctx.currentTime + 0.8)
 
-    osc.connect(gain)
-    gain.connect(getEffectsGain())
-    osc.start(t)
-    osc.stop(t + 0.2)
-  })
+  gain.gain.setValueAtTime(0.3, ctx.currentTime)
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8)
+
+  osc.connect(gain)
+  gain.connect(getEffectsGain())
+  osc.start()
+  osc.stop(ctx.currentTime + 0.85)
 }
 
 /** Soft whoosh (camera movement / fly-to) */
@@ -230,125 +227,60 @@ export function playError(): void {
 //   Low speed = low frequency rumble, high speed = higher-pitched wind.
 // ============================================
 
-let flightNoiseSource: AudioBufferSourceNode | null = null
-let flightFilter: BiquadFilterNode | null = null
-let flightGain: GainNode | null = null
-let flightActive = false
-
-// A second layer: a low sub-bass hum that adds body
-let flightHumOsc: OscillatorNode | null = null
-let flightHumGain: GainNode | null = null
+let flightPlaying = false
+let flightCooldownUntil = 0
 
 /**
- * Initialize the flight sound graph. Called once, then updated per-frame.
- * The sound is always "playing" but at zero gain when stationary.
+ * Fire a one-shot low rumble (1.5s). Lowpass white noise at 191Hz, Q 0.7, vol 0.42.
+ * Triggered once when movement starts, plays to completion, ignores further calls until done.
  */
-function initFlightSound(): void {
+function fireRumble(): void {
   const ctx = getCtx()
   if (ctx.state !== 'running') return
-  if (flightActive) return
-  flightActive = true
 
-  // Layer 1: filtered white noise (wind)
-  const bufferDuration = 2 // seconds of noise, looped
-  const bufferSize = ctx.sampleRate * bufferDuration
+  flightPlaying = true
+  const dur = 1.5
+
+  const bufferSize = ctx.sampleRate * dur
   const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
   const data = buffer.getChannelData(0)
   for (let i = 0; i < bufferSize; i++) {
     data[i] = Math.random() * 2 - 1
   }
 
-  flightNoiseSource = ctx.createBufferSource()
-  flightNoiseSource.buffer = buffer
-  flightNoiseSource.loop = true
+  const source = ctx.createBufferSource()
+  source.buffer = buffer
 
-  flightFilter = ctx.createBiquadFilter()
-  flightFilter.type = 'lowpass'
-  flightFilter.frequency.value = 40 // will be modulated
-  flightFilter.Q.value = 0.5
+  const filter = ctx.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.value = 191
+  filter.Q.value = 0.7
 
-  flightGain = ctx.createGain()
-  flightGain.gain.value = 0 // silent until camera moves
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0.42, ctx.currentTime)
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur)
 
-  flightNoiseSource.connect(flightFilter)
-  flightFilter.connect(flightGain)
-  flightGain.connect(getEffectsGain())
-  flightNoiseSource.start()
-
-  // Layer 2: sub-bass hum (gives the feeling of "engine" or "mass moving through air")
-  flightHumOsc = ctx.createOscillator()
-  flightHumOsc.type = 'sine'
-  flightHumOsc.frequency.value = 20 // deep sub-bass, will be modulated
-
-  flightHumGain = ctx.createGain()
-  flightHumGain.gain.value = 0
-
-  flightHumOsc.connect(flightHumGain)
-  flightHumGain.connect(getEffectsGain())
-  flightHumOsc.start()
+  source.connect(filter)
+  filter.connect(gain)
+  gain.connect(getEffectsGain())
+  source.start()
+  source.onended = () => {
+    flightPlaying = false
+    flightCooldownUntil = performance.now() + 2000 // 2s cooldown after rumble ends
+  }
 }
 
 /**
- * Update flight sound based on current camera velocity.
- * Call this every frame from the Cesium render loop.
- *
- * @param speed - Normalized speed 0..1 (0 = stationary, 1 = maximum travel speed)
+ * Called every frame from the render loop. Fires a single rumble
+ * when movement begins; ignores calls while the rumble is still playing.
  */
 export function updateFlightSound(speed: number): void {
-  const ctx = audioCtx
-  if (!ctx || ctx.state !== 'running') return
-
-  // Lazy-init the sound graph on first call
-  if (!flightActive) {
-    initFlightSound()
+  if (speed > 0.001 && !flightPlaying && performance.now() > flightCooldownUntil) {
+    fireRumble()
   }
-  if (!flightFilter || !flightGain || !flightHumOsc || !flightHumGain) return
-
-  const t = ctx.currentTime
-
-  // Smoothing: use setTargetAtTime for gentle transitions (time constant = smoothing speed)
-  const smoothing = 0.08 // seconds, lower = more responsive
-
-  if (speed < 0.001) {
-    // Stationary: fade to silence
-    flightGain.gain.setTargetAtTime(0, t, smoothing)
-    flightHumGain.gain.setTargetAtTime(0, t, smoothing)
-    return
-  }
-
-  // Clamp and apply a curve so low speeds are quieter
-  const s = Math.min(speed, 1)
-  const curve = s * s // quadratic: gentle at low speeds, strong at high
-
-  // Rumble: lowpass filter sweeps from 40Hz (slow) to 150Hz (fast)
-  // Deep atmospheric rumble, barely above subwoofer territory
-  const filterFreq = 40 + curve * 110
-  flightFilter.frequency.setTargetAtTime(filterFreq, t, smoothing)
-
-  // Rumble volume: up to 0.25 at max speed
-  const windVol = curve * 0.25
-  flightGain.gain.setTargetAtTime(windVol, t, smoothing)
-
-  // Sub-bass hum: frequency from 20Hz (slow) to 50Hz (fast)
-  // Below 30Hz is more vibration than tone
-  const humFreq = 20 + curve * 30
-  flightHumOsc.frequency.setTargetAtTime(humFreq, t, smoothing)
-
-  // Hum volume: up to 0.15 at max speed
-  const humVol = curve * 0.15
-  flightHumGain.gain.setTargetAtTime(humVol, t, smoothing)
 }
 
-/**
- * Tear down the flight sound (if we ever need to clean up).
- */
+/** No-op (kept for API compatibility). */
 export function stopFlightSound(): void {
-  if (flightNoiseSource) { try { flightNoiseSource.stop() } catch {} }
-  if (flightHumOsc) { try { flightHumOsc.stop() } catch {} }
-  flightNoiseSource = null
-  flightFilter = null
-  flightGain = null
-  flightHumOsc = null
-  flightHumGain = null
-  flightActive = false
+  flightPlaying = false
 }

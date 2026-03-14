@@ -12,7 +12,7 @@ import { useStore } from '@/store'
 import { route } from '@/ai/router'
 import { registry } from '@/ai/registry'
 import type { PanelState } from '@/ai/types'
-import { playSnap, playWhoosh, playPing, playSuccess, toggleMute, warmUp } from '@/audio/sounds'
+import { playPing, playSuccess, toggleMute, warmUp } from '@/audio/sounds'
 
 export function ChatPanel() {
   const panelState = useStore(s => s.panelState)
@@ -82,9 +82,6 @@ export function ChatPanel() {
     // Warm up audio on user gesture (required by Chrome autoplay policy)
     await warmUp()
 
-    // Snap on submit
-    playSnap()
-
     // Add user message
     addMessage({ role: 'user', content: text })
 
@@ -99,8 +96,9 @@ export function ChatPanel() {
       const confirmation = `${result.command.name}`
 
       // Play appropriate sound based on command category
+      // Navigation has no trigger sound (flight rumble handles it)
       const cat = result.command.category
-      if (cat === 'navigation') playWhoosh()
+      if (cat === 'navigation') { /* flight rumble covers this */ }
       else if (cat === 'view') playPing()
       else playSuccess()
 
