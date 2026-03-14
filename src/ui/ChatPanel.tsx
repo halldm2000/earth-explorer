@@ -12,7 +12,7 @@ import { useStore } from '@/store'
 import { route } from '@/ai/router'
 import { registry } from '@/ai/registry'
 import type { PanelState } from '@/ai/types'
-import { playClick, playWhoosh, playPing, playSuccess, toggleMute } from '@/audio/sounds'
+import { playClick, playWhoosh, playPing, playSuccess, toggleMute, warmUp } from '@/audio/sounds'
 
 export function ChatPanel() {
   const panelState = useStore(s => s.panelState)
@@ -79,6 +79,8 @@ export function ChatPanel() {
     if (!text) return
 
     setInputValue('')
+    // Warm up audio on user gesture (required by Chrome autoplay policy)
+    await warmUp()
     playClick()
 
     // Add user message

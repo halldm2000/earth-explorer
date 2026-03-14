@@ -7,6 +7,7 @@ import { registry } from './registry'
 import { registerProvider, removeProvider } from './router'
 import { coreCommands } from './core-commands'
 import { ClaudeProvider } from './providers/claude'
+import { initWeather } from '@/features/weather'
 
 let commandsRegistered = false
 let claudeAdded = false
@@ -16,6 +17,9 @@ export function initAI(options?: { anthropicKey?: string | null }): void {
   if (!commandsRegistered) {
     registry.registerAll(coreCommands)
     commandsRegistered = true
+
+    // Initialize feature modules
+    initWeather()
   }
 
   // Add Claude provider if key is available and we haven't already

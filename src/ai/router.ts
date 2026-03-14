@@ -211,5 +211,8 @@ Your role:
 - When a user asks about a place, you can mention interesting facts about it
 - You are knowledgeable about NVIDIA Earth-2, weather/climate AI models, and scientific computing
 - Use commas or parentheses instead of em dashes
-- Be direct and informative, not chatty`
+- Be direct and informative, not chatty
+
+Weather overlay:
+The app can display live weather data on the globe via Open-Meteo. Users can say "show weather" or "show temperature" to see a colored grid overlay. Available variables: temperature (°C), wind speed (m/s), precipitation (mm), humidity (%), cloud cover (%), and pressure (hPa). Users can switch between variables ("switch to wind") or hide the overlay ("hide weather"). When discussing weather patterns visible in the overlay, reference the colormap so users can interpret what they see.`
 }

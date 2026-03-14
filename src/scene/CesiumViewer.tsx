@@ -185,17 +185,14 @@ function Label({ children }: { children: string }) {
 }
 
 // ============================================
-// Keyboard: WASD/arrows for camera movement
+// Keyboard shortcuts (non-movement)
+// Movement is handled by mouse/trackpad via Cesium's ScreenSpaceCameraController.
 // ============================================
 
 function setupKeyboard(viewer: Cesium.Viewer) {
-  const flags: Record<string, boolean> = {}
-
   document.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-    // Don't capture keys used by the chat panel
-    if (e.key === '`' || e.key === '/' || e.key === 'Tab' || e.key === 'Escape' || e.key === 'm' || e.key === 'M') return
-    flags[e.key.toLowerCase()] = true
+    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
 
     // R = reset view
     if (e.key.toLowerCase() === 'r') {
@@ -209,27 +206,6 @@ function setupKeyboard(viewer: Cesium.Viewer) {
         duration: 2.0,
       })
     }
-  })
-
-  document.addEventListener('keyup', (e) => {
-    flags[e.key.toLowerCase()] = false
-  })
-
-  // Per-frame keyboard movement
-  viewer.clock.onTick.addEventListener(() => {
-    const camera = viewer.camera
-    const height = camera.positionCartographic.height
-    const moveRate = height / 50
-    const rotateRate = 0.02
-
-    if (flags['w'] || flags['arrowup']) camera.moveForward(moveRate)
-    if (flags['s'] || flags['arrowdown']) camera.moveBackward(moveRate)
-    if (flags['a'] || flags['arrowleft']) camera.moveLeft(moveRate)
-    if (flags['d'] || flags['arrowright']) camera.moveRight(moveRate)
-    if (flags['q']) camera.twistLeft(rotateRate)
-    if (flags['e']) camera.twistRight(rotateRate)
-    if (flags['shift']) camera.moveUp(moveRate)
-    if (flags[' ']) camera.moveDown(moveRate)
   })
 }
 

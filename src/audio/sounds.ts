@@ -10,9 +10,13 @@ let audioCtx: AudioContext | null = null
 let masterGain: GainNode | null = null
 let effectsGain: GainNode | null = null
 let muted = false
-let effectsVolume = 0.3
+let effectsVolume = 0.6
 
-function getCtx(): AudioContext {
+/**
+ * Ensure the AudioContext is created and running.
+ * Must be called from a user gesture (click, keydown) for Chrome autoplay policy.
+ */
+async function ensureCtx(): Promise<AudioContext> {
   if (!audioCtx) {
     audioCtx = new AudioContext()
     masterGain = audioCtx.createGain()
@@ -21,9 +25,26 @@ function getCtx(): AudioContext {
     effectsGain.gain.value = effectsVolume
     effectsGain.connect(masterGain)
   }
-  // Resume if suspended (browsers require user gesture)
+
   if (audioCtx.state === 'suspended') {
-    audioCtx.resume()
+    await audioCtx.resume()
+  }
+
+  return audioCtx
+}
+
+/**
+ * Synchronous context getter for internal use.
+ * Call ensureCtx() first from the user gesture handler to guarantee it's running.
+ */
+function getCtx(): AudioContext {
+  if (!audioCtx) {
+    audioCtx = new AudioContext()
+    masterGain = audioCtx.createGain()
+    masterGain.connect(audioCtx.destination)
+    effectsGain = audioCtx.createGain()
+    effectsGain.gain.value = effectsVolume
+    effectsGain.connect(masterGain)
   }
   return audioCtx
 }
@@ -53,51 +74,63 @@ export function setEffectsVolume(vol: number): void {
   }
 }
 
+/**
+ * Warm up the audio system. Call this on the first user interaction
+ * (click, keydown) to ensure the AudioContext is ready before playing sounds.
+ */
+export async function warmUp(): Promise<void> {
+  await ensureCtx()
+}
+
 // --- Procedural sound effects ---
 
 /** Soft click sound (UI interaction) */
 export function playClick(): void {
   const ctx = getCtx()
+  if (ctx.state !== 'running') return
+
   const osc = ctx.createOscillator()
   const gain = ctx.createGain()
 
   osc.type = 'sine'
   osc.frequency.setValueAtTime(800, ctx.currentTime)
-  osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.08)
+  osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.1)
 
-  gain.gain.setValueAtTime(0.15, ctx.currentTime)
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08)
+  gain.gain.setValueAtTime(0.3, ctx.currentTime)
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1)
 
   osc.connect(gain)
   gain.connect(getEffectsGain())
   osc.start()
-  osc.stop(ctx.currentTime + 0.1)
+  osc.stop(ctx.currentTime + 0.12)
 }
 
 /** Gentle ascending tone (command executed successfully) */
 export function playSuccess(): void {
   const ctx = getCtx()
+  if (ctx.state !== 'running') return
+
   const osc = ctx.createOscillator()
   const gain = ctx.createGain()
 
   osc.type = 'sine'
   osc.frequency.setValueAtTime(440, ctx.currentTime)
-  osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15)
+  osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.18)
 
-  gain.gain.setValueAtTime(0.1, ctx.currentTime)
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2)
+  gain.gain.setValueAtTime(0.25, ctx.currentTime)
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25)
 
   osc.connect(gain)
   gain.connect(getEffectsGain())
   osc.start()
-  osc.stop(ctx.currentTime + 0.25)
+  osc.stop(ctx.currentTime + 0.28)
 }
 
 /** Soft whoosh (camera movement / fly-to) */
 export function playWhoosh(): void {
   const ctx = getCtx()
+  if (ctx.state !== 'running') return
 
-  // Filtered noise for a whoosh effect
   const bufferSize = ctx.sampleRate * 0.4
   const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
   const data = buffer.getChannelData(0)
@@ -115,7 +148,7 @@ export function playWhoosh(): void {
   filter.Q.value = 1.0
 
   const gain = ctx.createGain()
-  gain.gain.setValueAtTime(0.08, ctx.currentTime)
+  gain.gain.setValueAtTime(0.2, ctx.currentTime)
   gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35)
 
   source.connect(filter)
@@ -127,6 +160,8 @@ export function playWhoosh(): void {
 /** Subtle ping (data layer loaded, toggle) */
 export function playPing(): void {
   const ctx = getCtx()
+  if (ctx.state !== 'running') return
+
   const osc = ctx.createOscillator()
   const gain = ctx.createGain()
 
@@ -134,8 +169,8 @@ export function playPing(): void {
   osc.frequency.setValueAtTime(1200, ctx.currentTime)
   osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.12)
 
-  gain.gain.setValueAtTime(0.08, ctx.currentTime)
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15)
+  gain.gain.setValueAtTime(0.2, ctx.currentTime)
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18)
 
   osc.connect(gain)
   gain.connect(getEffectsGain())
@@ -146,6 +181,8 @@ export function playPing(): void {
 /** Low tone (error or "not found") */
 export function playError(): void {
   const ctx = getCtx()
+  if (ctx.state !== 'running') return
+
   const osc = ctx.createOscillator()
   const gain = ctx.createGain()
 
@@ -153,8 +190,8 @@ export function playError(): void {
   osc.frequency.setValueAtTime(300, ctx.currentTime)
   osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.2)
 
-  gain.gain.setValueAtTime(0.1, ctx.currentTime)
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25)
+  gain.gain.setValueAtTime(0.25, ctx.currentTime)
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28)
 
   osc.connect(gain)
   gain.connect(getEffectsGain())
