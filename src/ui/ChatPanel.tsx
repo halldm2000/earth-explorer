@@ -7,7 +7,7 @@
  *   full - right sidebar with scrolling history
  */
 
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useEffect, useCallback, useMemo } from 'react'
 import { useStore } from '@/store'
 import { route } from '@/ai/router'
 import { registry } from '@/ai/registry'
@@ -197,7 +197,7 @@ export function ChatPanel() {
             .map(msg => (
               <div key={msg.id} style={messageBubbleStyle(msg.role, msg.isError)}>
                 {msg.isError && <span style={errorIconStyle}>!</span>}
-                {msg.content || '...'}
+                <MarkdownContent content={msg.content || '...'} />
               </div>
             ))
           }
@@ -254,6 +254,106 @@ export function ChatPanel() {
       </form>
     </div>
   )
+}
+
+// --- Markdown rendering ---
+
+/**
+ * Lightweight inline markdown renderer. Handles:
+ *   **bold**, *italic*, `code`, ```code blocks```, and line breaks.
+ * No external dependencies. Returns React elements.
+ */
+function MarkdownContent({ content }: { content: string }) {
+  const rendered = useMemo(() => renderMarkdown(content), [content])
+  return <div style={{ lineHeight: 1.5 }}>{rendered}</div>
+}
+
+function renderMarkdown(text: string): React.ReactNode[] {
+  // Split on code blocks first (```...```)
+  const parts = text.split(/(```[\s\S]*?```)/g)
+  const result: React.ReactNode[] = []
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]
+    if (part.startsWith('```') && part.endsWith('```')) {
+      // Code block
+      const code = part.slice(3, -3).replace(/^\w*\n/, '') // strip optional language tag
+      result.push(
+        <pre key={i} style={codeBlockStyle}>
+          <code>{code}</code>
+        </pre>
+      )
+    } else {
+      // Render inline markdown within paragraphs split by double newlines
+      const paragraphs = part.split(/\n\n+/)
+      for (let p = 0; p < paragraphs.length; p++) {
+        if (p > 0) result.push(<div key={`${i}-br-${p}`} style={{ height: '0.5em' }} />)
+        const lines = paragraphs[p].split('\n')
+        for (let l = 0; l < lines.length; l++) {
+          if (l > 0) result.push(<br key={`${i}-ln-${l}`} />)
+          result.push(...renderInline(lines[l], `${i}-${p}-${l}`))
+        }
+      }
+    }
+  }
+
+  return result
+}
+
+function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
+  // Process: **bold**, *italic*, `code`
+  const tokens: React.ReactNode[] = []
+  // Regex matches **bold**, *italic*, or `code` (non-greedy)
+  const pattern = /(\*\*(.+?)\*\*|\*(.+?)\*|`([^`]+)`)/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  let idx = 0
+
+  while ((match = pattern.exec(text)) !== null) {
+    // Text before the match
+    if (match.index > lastIndex) {
+      tokens.push(text.slice(lastIndex, match.index))
+    }
+    if (match[2]) {
+      // **bold**
+      tokens.push(<strong key={`${keyPrefix}-b${idx}`}>{match[2]}</strong>)
+    } else if (match[3]) {
+      // *italic*
+      tokens.push(<em key={`${keyPrefix}-i${idx}`}>{match[3]}</em>)
+    } else if (match[4]) {
+      // `code`
+      tokens.push(<code key={`${keyPrefix}-c${idx}`} style={inlineCodeStyle}>{match[4]}</code>)
+    }
+    lastIndex = match.index + match[0].length
+    idx++
+  }
+
+  // Remaining text
+  if (lastIndex < text.length) {
+    tokens.push(text.slice(lastIndex))
+  }
+
+  return tokens
+}
+
+const codeBlockStyle: React.CSSProperties = {
+  background: 'rgba(0,0,0,0.3)',
+  borderRadius: 4,
+  padding: '8px 10px',
+  margin: '6px 0',
+  fontSize: '0.85em',
+  fontFamily: 'monospace',
+  overflowX: 'auto',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+}
+
+const inlineCodeStyle: React.CSSProperties = {
+  background: 'rgba(0,0,0,0.2)',
+  borderRadius: 3,
+  padding: '1px 5px',
+  fontSize: '0.9em',
+  fontFamily: 'monospace',
 }
 
 // --- Styles ---
