@@ -443,11 +443,14 @@ const baseMap: CommandEntry = {
     'base map {style}',
     'map style {style}',
     'switch map to {style}',
+    'default map',
     'dark map',
     'light map',
     'satellite map',
     'road map',
     'political map',
+    'normal map',
+    'reset map',
   ],
   params: [
     {
@@ -468,6 +471,7 @@ const baseMap: CommandEntry = {
       else if (raw.includes('light') || raw.includes('political')) style = 'light'
       else if (raw.includes('satellite')) style = 'satellite'
       else if (raw.includes('road')) style = 'road'
+      else if (raw.includes('default') || raw.includes('normal') || raw.includes('reset')) style = 'default'
       else style = 'default'
     }
 
