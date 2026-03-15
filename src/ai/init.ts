@@ -10,6 +10,7 @@ import { queryCommands } from './query-commands'
 import { ClaudeProvider } from './providers/claude'
 import { OpenAIProvider, createOpenAIProvider, createOllamaProvider, createOpenRouterProvider } from './providers/openai'
 import { initLayers } from '@/features/layers'
+import { startMcpBridge } from '@/mcp'
 
 let commandsRegistered = false
 
@@ -22,6 +23,9 @@ export function initAI(options?: { anthropicKey?: string | null }): void {
 
     // Initialize feature modules
     initLayers()
+
+    // Start MCP bridge (connects to MCP server if running)
+    startMcpBridge()
   }
 
   // Auto-add provider from env / stored key
