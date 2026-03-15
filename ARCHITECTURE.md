@@ -162,194 +162,110 @@ Shared colormap library. Default set covers common scientific needs (viridis, in
 
 ## AI Interface
 
-The conversational interface is the primary way users interact with the globe. It needs to be intelligent (understand intent, take action, explain what it did), multi-provider (not locked to one AI vendor), and tool-capable (the AI can execute commands on the globe, not just talk).
+The conversational interface is the primary way users interact with the globe. It understands natural language, executes commands, explains what it did, supports multiple AI providers, and can see the globe via screenshot vision.
 
-### How it works today
+### Three-tier routing
 
-```
-User types "go to Berlin"
-  → Tier 0: Pattern matching (instant, regex against command registry)
-  → Match found → execute handler → done
+Every user input goes through a priority chain. The first tier that handles it wins.
 
-User types "What causes hurricanes?"
-  → Tier 0: No match
-  → Tier 3: Send to Claude API → stream text response
-  → AI talks but cannot act on the globe
-```
+**Tier 1: AI intent classifier (Haiku, ~300ms, ~250 tokens)**
+A lightweight, non-streaming call to Claude Haiku that classifies the input as a single command (returns JSON with command ID and params) or "chat" (needs the full conversation path). This replaces the original regex pattern matching with actual language understanding at minimal cost. Simple commands like "go to Berlin", "show borders", or "zoom to 500km" execute directly from the classifier's output without a full chat round-trip.
 
-The pattern matcher handles structured commands well, but the AI fallback is just a chat window. It can't fly the camera, toggle layers, load data, or do anything except talk.
+The classifier receives the current viewer state (camera position, altitude, active layers, base map) so it can handle relative commands like "go up 10m" by computing the target altitude from current state.
 
-### What we're building
+Commands marked `chatOnly: true` (all query tools) are excluded from the classifier's command list and always route to Tier 2.
 
-A tool-use loop where the AI can call any registered command, observe the result, call more commands, and then summarize what it did in natural language. The key insight: the command registry already defines every action the app can take, complete with parameter schemas. Those are the tools.
+**Tier 2: AI chat with tool use (Sonnet, streaming, 500ms+)**
+The full conversational path. Handles compound requests ("fly to Tokyo and show borders"), questions ("what causes hurricanes?"), visual queries ("what am I looking at?"), and anything the classifier defers. The AI receives tool definitions auto-generated from the command registry, can call multiple tools per turn, and loops up to 5 rounds. Supports vision via the screenshot tool (the AI captures and analyzes the CesiumJS canvas).
+
+**Tier 3: Pattern matching fallback (offline only, <1ms)**
+Regex-based matching against command patterns. Only fires when no AI provider is available (no API key, offline). Keeps basic commands working without network access. Threshold score >= 0.85.
 
 ```
-User: "Show me earthquake activity near Japan this week, and switch to dark map"
-  → Tier 0: No single pattern match
-  → Tier 3: Send to AI with tools derived from command registry
-  → AI calls: flyTo({ place: "Japan" })
-  → AI calls: setBaseMap({ style: "dark" })
-  → AI calls: showLayer({ layer: "earthquakes" })
-  → Router executes each tool call, returns results
-  → AI responds: "I've flown to Japan, switched to dark map, and turned on
-    the earthquake layer. You can see several magnitude 4+ events in the
-    past week clustered along the Pacific plate boundary."
+"go to Berlin"
+  → Tier 1 (Haiku): {"command":"core:go-to","params":{"place":"berlin"}}
+  → Execute directly → fly to Berlin → done (~300ms)
+
+"fly to Tokyo and show borders"
+  → Tier 1 (Haiku): {"command":"chat"} (compound request)
+  → Tier 2 (Sonnet): calls go-to + layers:toggle in one round
+  → Responds: "Flew to Tokyo with borders enabled." (~800ms)
+
+"what am I looking at?"
+  → Tier 1: excluded (all query tools are chatOnly)
+  → Tier 2 (Sonnet): calls query:screenshot → gets JPEG + position
+  → Describes the scene from the image (~2s)
+
+"zoom to 500km" (no AI provider configured)
+  → Tier 1/2: skipped (no provider)
+  → Tier 3: pattern match → core:zoom-to, altitude=500 → done (<1ms)
 ```
+
+### Command types
+
+**Action commands** change the globe state: navigation (go-to, zoom-to, zoom-in/out, face-north, reset-view), layers (toggle, show, hide), base maps, buildings, terrain, lighting, time-of-day, audio, fullscreen.
+
+**Query commands** return information without side effects. All are `chatOnly: true` so they route through the AI chat path, which calls them as tools, interprets the results, and gives a conversational answer.
+
+| Command | Returns | Use case |
+|---------|---------|----------|
+| `query:camera` | Position, altitude, heading, pitch | "Where am I?" |
+| `query:layers` | All layers with on/off status | "What layers are available?" |
+| `query:scene` | Full state snapshot | "What's showing right now?" |
+| `query:screenshot` | JPEG image + position context | "What am I looking at?" (vision) |
+| `query:elevation` | Terrain height at lat/lon | "How high is this mountain?" |
+
+### Vision (screenshot tool)
+
+The AI can see the globe. When the user asks a visual question, the chat path calls `query:screenshot`, which captures the CesiumJS canvas as a JPEG (70% quality), returns it as a `ContentBlock[]` with both text context and the image. The Claude provider sends this as a base64 image block in the tool result, and Sonnet describes what it sees.
+
+The `ContentBlock` union type supports text and images throughout the message pipeline:
+```typescript
+type ContentBlock = { type: 'text'; text: string }
+                  | { type: 'image'; mediaType: string; data: string }
+```
+
+Command handlers can return `ContentBlock[]` instead of a plain string. The router, providers, and message format all support this. The OpenAI/Ollama provider gracefully degrades (extracts text blocks, skips images).
+
+### State awareness
+
+Both the classifier and chat system prompts include a real-time state snapshot: camera position, altitude, heading, pitch, active layers, base map, and building mode. This lets the AI handle relative commands ("go up 10m", "zoom in closer") and avoid redundant actions (won't toggle a layer that's already on).
+
+### Chat history management
+
+Classifier-handled commands are tagged in the message history. When the chat path (Tier 2) receives history, these tagged exchanges are rewritten as `[Already executed: ...]` context notes. This gives the AI full conversational awareness without re-executing previous commands.
 
 ### Multi-provider design
 
-The AI system is not tied to one provider. The `AIProvider` interface defines what any provider must support, and the router handles the tool execution loop regardless of which provider generated the tool calls.
+The AI system is provider-agnostic. The `AIProvider` interface defines what any provider must support, and the router handles tool execution regardless of which provider generated the calls.
 
-**Supported provider types:**
+| Provider | API Format | Tool Use | Notes |
+|----------|-----------|----------|-------|
+| Anthropic (Claude) | Messages API | `tool_use` blocks | Primary. Haiku for classifier, Sonnet for chat. Vision supported. |
+| OpenAI (GPT) | Chat Completions | `function_calling` | Full tool use support. No vision in tool results (text only). |
+| Ollama (local) | OpenAI-compatible | `tools` array | Free, private. Limited tool use support depends on model. |
+| OpenRouter | OpenAI-compatible | `function_calling` | Multi-model access via single API. |
 
-| Provider | API Format | Tool Use | Latency | Cost |
-|----------|-----------|----------|---------|------|
-| Anthropic (Claude) | Messages API | `tool_use` blocks | ~500ms | Per-token |
-| OpenAI (GPT) | Chat Completions | `function_calling` | ~500ms | Per-token |
-| Google (Gemini) | GenerateContent | `functionDeclarations` | ~500ms | Per-token |
-| Ollama (local) | Chat API | `tools` array | ~200ms | Free |
-| OpenRouter | OpenAI-compatible | `function_calling` | Varies | Per-token |
-
-Each provider speaks its own wire format for tool use, but they all follow the same conceptual loop: (1) send messages with tool definitions, (2) model responds with tool calls, (3) execute tools, (4) send results back, (5) model continues.
-
-**The normalized format** lives in the router. Providers translate between the normalized format and their native API:
-
-```typescript
-// What the router sees (provider-agnostic)
-interface ToolCall {
-  id: string
-  name: string                    // maps to command registry ID
-  arguments: Record<string, unknown>
-}
-
-interface ToolResult {
-  id: string
-  content: string                 // what the command returned
-  isError?: boolean
-}
-
-// What each provider implements
-interface AIProvider {
-  name: string
-  available(): Promise<boolean>
-
-  // Chat with tool use. Yields text chunks and tool call requests.
-  chat(
-    messages: ChatMessage[],
-    tools: ToolDef[],
-    options?: ChatOptions,
-  ): AsyncIterable<StreamEvent>
-}
-
-// Stream events (union type)
-type StreamEvent =
-  | { type: 'text'; content: string }
-  | { type: 'tool_call'; call: ToolCall }
-  | { type: 'done' }
+Provider configuration via chat or env vars:
 ```
-
-### Tool definitions from command registry
-
-The router auto-generates tool definitions from the command registry. Every registered command becomes a tool the AI can call. Plugins that register commands automatically become AI-callable, no extra work needed.
-
-```typescript
-// Command registry entry (already exists)
-{
-  id: 'core:go-to',
-  name: 'Go to location',
-  params: [{ name: 'place', type: 'string', required: true }],
-  handler: (params) => { /* fly camera */ },
-}
-
-// Auto-generated tool definition sent to AI
-{
-  name: 'core:go-to',
-  description: 'Fly the camera to a named location',
-  parameters: {
-    type: 'object',
-    properties: {
-      place: { type: 'string', description: 'Location name' }
-    },
-    required: ['place']
-  }
-}
+"set provider anthropic sk-ant-..."  → VITE_ANTHROPIC_API_KEY in .env
+"set provider ollama"                → Local Ollama (no key needed)
+"set provider openrouter sk-or-..."  → OpenRouter multi-model
 ```
-
-### The conversation loop
-
-The router manages the full loop. This is provider-agnostic:
-
-```
-1. User sends message
-2. Router builds: system prompt + conversation history + tool definitions
-3. Send to active provider
-4. Provider streams back text chunks and/or tool calls
-5. For each tool call:
-   a. Look up command in registry
-   b. Execute handler with provided arguments
-   c. Capture result (success message, error, or data)
-   d. Add tool result to conversation
-6. If there were tool calls, send updated conversation back to provider
-   (the model needs to see the results to formulate its response)
-7. Repeat 4-6 until the model produces only text (no more tool calls)
-8. Stream final text response to the chat panel
-```
-
-Most interactions complete in one round (user asks, model calls 1-3 tools, responds). Complex multi-step tasks might take 2-3 rounds.
 
 ### System prompt design
 
-The system prompt gives the AI its identity, capabilities, and constraints. It's built dynamically from:
+Built dynamically from: a fixed preamble (role, personality, response style), the current viewer state snapshot, available tool definitions (auto-generated from command registry), and plugin context fragments.
 
-- A fixed preamble (role, personality, response style)
-- The current globe state (camera position, active layers, base map)
-- Available tools (auto-generated from command registry)
-- Plugin context (active plugins contribute their own system prompt fragments)
+Plugins register system prompt fragments via `api.ai.addSystemContext(...)`. This lets the AI know what's possible without hardcoding plugin knowledge into the core.
 
-Plugins can register system prompt fragments via the API:
+### Chat panel
 
-```typescript
-api.ai.addSystemContext(`
-  The StormCast plugin is active. It provides 7-day precipitation
-  forecasts from NVIDIA's StormCast model. The user can ask about
-  weather forecasts for any location.
-`)
-```
+Three-state UI: minimized (command bar), peek (last few messages), full (scrolling sidebar). Messages render with inline markdown (bold, italic, code, code blocks, paragraphs). Tool executions show as `⚡ Tool Name` prefixes. Errors render as red-tinted bubbles. A processing guard prevents overlapping requests.
 
-This lets the AI know what's possible without hardcoding plugin knowledge into the core.
+### Future: MCP server for external chat interfaces
 
-### Provider configuration
-
-Users configure providers through the chat interface or environment variables:
-
-```
-"set provider openai sk-..."       → OpenAI with API key
-"set provider anthropic sk-ant-..." → Anthropic with API key
-"set provider ollama"               → Local Ollama (no key needed)
-"set provider openrouter sk-or-..." → OpenRouter (multi-model access)
-```
-
-The store persists the active provider and key in localStorage. Multiple providers can be configured simultaneously, with a priority order (local first, then cloud).
-
-### What the AI can do
-
-With tool use, the AI becomes the intelligent glue between all the app's capabilities:
-
-**Navigation + knowledge**: "Take me to the deepest point in the ocean" (flies to Challenger Deep, explains what it is)
-
-**Multi-step workflows**: "Compare the terrain around Mount Everest and K2" (flies to Everest, takes note, flies to K2, provides comparison)
-
-**Data exploration**: "Show me where the strongest earthquakes happened this month" (loads earthquake data, filters by magnitude, flies to the cluster, narrates the pattern)
-
-**Layer composition**: "Set up a view for analyzing tropical storm activity" (switches to dark map, shows coastlines, loads hurricane tracks, zooms to Atlantic basin)
-
-**Plugin interaction**: "Run StormCast for the next 48 hours over Europe and show precipitation" (calls plugin's inference API, loads result as imagery layer, enables time slider)
-
-### What the AI should NOT do
-
-The AI enhances interaction but doesn't replace the command system. Direct commands ("go to Berlin", "dark map", "show borders") still go through Tier 0 pattern matching for instant response. The AI is the fallback for ambiguous, conversational, or multi-step requests.
-
-The AI also shouldn't be a bottleneck. If the user knows what command they want, the pattern matcher fires in <1ms. The AI path adds 500ms+ latency. The tiered system preserves instant feedback for known commands while enabling intelligent behavior for everything else.
+The built-in chat panel works for quick commands, but a laptop user might prefer driving the globe from a more capable external chat interface (Claude Desktop, Claude in Chrome, or any MCP-capable client). The plan is to expose the command registry as a Model Context Protocol (MCP) server running alongside the app. External clients connect via WebSocket, discover available tools, and can call any command. The tool definitions and execution are identical to the internal path. This is planned for a dedicated session.
 
 ## Build Order
 
@@ -362,11 +278,15 @@ What to build and in what sequence, prioritized by how much downstream work each
 - [x] Base map switching (satellite, dark, light, road)
 - [x] Plugin API contract (TypeScript interface defined)
 - [x] AI interface architecture designed
-- [ ] **AI tool use: refactor provider interface for streaming tool calls**
-- [ ] **AI tool use: implement tool execution loop in router**
-- [ ] **AI tool use: auto-generate tool defs from command registry**
-- [ ] **OpenAI-compatible provider** (covers OpenAI, Ollama, OpenRouter, any OpenAI-compatible API)
-- [ ] **Provider switching UI** (set provider command, multi-provider store)
+- [x] **AI tool use: refactor provider interface for streaming tool calls**
+- [x] **AI tool use: implement tool execution loop in router**
+- [x] **AI tool use: auto-generate tool defs from command registry**
+- [x] **OpenAI-compatible provider** (covers OpenAI, Ollama, OpenRouter, any OpenAI-compatible API)
+- [x] **Provider switching UI** (set provider command, multi-provider store)
+- [x] **Query tools** (camera, layers, scene, elevation, screenshot with vision)
+- [x] **AI intent classifier** (Haiku-based, replaces regex as primary router)
+- [x] **Chat markdown rendering** (inline bold, italic, code, code blocks)
+- [ ] **MCP server** (expose command registry for external chat interfaces like Claude Desktop)
 - [ ] Plugin loader (load from URL, validate apiVersion)
 - [ ] Data-only plugin loader (JSON manifest)
 
