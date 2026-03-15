@@ -196,6 +196,7 @@ Rules:
 - You MUST use one of the exact command IDs listed above. Do NOT invent command IDs.
 - For relative adjustments (e.g. "go up 10m"), use the current altitude from state and compute the target. Example: current altitude 500m + "go up 10m" = {"command":"core:zoom-to","params":{"altitude":0.51}}
 - For compound requests like "go to X and show Y", always return {"command":"chat"}
+- If the user says "look at", "view from", "see from ground level", "from street level", "from drone level", or any request implying a specific VIEWING ANGLE or PERSPECTIVE of a landmark, always return {"command":"chat"}. These need multi-step execution (geocode, position camera, verify). Do NOT map them to core:go-to.
 - For place names, include descriptive context that helps disambiguation. Example: "take a close look at the big ben clock" should use place "Big Ben, London" (not just "Big Ben"). Add city/country/context when the user's wording implies a specific well-known place.
 - Respond ONLY with valid JSON, no other text.`
 
@@ -282,7 +283,7 @@ async function* runAIWithTools(
   }
   messages.push({ role: 'user', content: userInput })
 
-  const MAX_ROUNDS = 5 // safety limit on tool use rounds
+  const MAX_ROUNDS = 8 // safety limit on tool use rounds
   let round = 0
 
   while (round < MAX_ROUNDS) {
@@ -562,8 +563,14 @@ ${commandList}
 Your role:
 - Answer questions about geography, Earth science, meteorology, climate, remote sensing, and related topics
 - Use tools to take actions on the globe (navigate, toggle layers, switch maps) when the user's intent implies it
-- For "look at" or "view from ground/street level" or "see X from nearby" requests: first use core_go-to to geocode the target (which returns coordinates in the result), then use core_look-at with those lat/lon to position the camera nearby looking at the target. Set targetHeight to the actual height of the feature (e.g. Big Ben clock = 55m, Eiffel Tower top = 330m, Statue of Liberty torch = 93m, a house = 10m). Set cameraHeight and distance based on intent: street level (cameraHeight=2, distance=100), tourist photo (cameraHeight=1.7, distance=50-100), eye level (cameraHeight=20, distance=150), drone (cameraHeight=100-300, distance=200-400). After positioning, ALWAYS take a screenshot to verify the view looks good.
-- After using navigation or zoom tools (especially for specific landmarks, buildings, or features), take a screenshot to verify the result looks correct. If the target isn't visible or the view doesn't match what the user asked for, adjust and try again before responding. Don't just trust the geocoder result.
+- For "look at" or "view from ground/street level" or "see X from nearby" requests, use this EXACT workflow:
+  1. Call core_go-to to geocode the place name (returns coordinates like "Flying to Place Name (lat, lon)")
+  2. Parse the lat/lon from the go-to result, then call core_look-at with those coordinates PLUS appropriate parameters. Call BOTH tools in the same round if possible.
+  3. Take a screenshot to verify. If the view is wrong, adjust with ONE more look-at call (change heading, distance, or height).
+  Set targetHeight to the feature's real height (Big Ben clock = 55m, Eiffel Tower top = 330m, Statue of Liberty torch = 93m, a house = 10m).
+  Set cameraHeight and distance by intent: street level (cameraHeight=2, distance=80), tourist photo (cameraHeight=1.7, distance=50), drone (cameraHeight=100, distance=200).
+  IMPORTANT: Do NOT call go-to twice for the same place. Once you have coordinates, use look-at directly. Be efficient with tool rounds.
+- After using navigation or zoom tools (especially for specific landmarks, buildings, or features), take a screenshot to verify the result looks correct. If the target isn't visible or the view doesn't match what the user asked for, adjust with ONE targeted tool call and re-screenshot. Don't just trust the geocoder result.
 - If the user says something looks wrong, take a screenshot FIRST before agreeing or disagreeing. You might already be in the right place. Don't be sycophantic, be accurate.
 - After using tools, confirm what you did in ONE short sentence. Only add a second sentence if there's something genuinely surprising or useful about the location/data. Do NOT narrate geography facts the user didn't ask about.
 - Keep responses concise (1-2 sentences for tool actions, 2-4 for questions) unless the user asks for depth
