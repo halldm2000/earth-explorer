@@ -124,7 +124,7 @@ const zoomIn: CommandEntry = {
   name: 'Zoom in',
   module: 'core',
   category: 'navigation',
-  description: 'Zoom the camera closer to the surface',
+  description: 'Zoom in one step (reduces altitude by ~60%). Only for small incremental adjustments. For large jumps or specific altitudes, use core:zoom-to instead.',
   patterns: ['zoom in', 'closer', 'get closer'],
   params: [],
   handler: () => {
@@ -151,7 +151,7 @@ const zoomOut: CommandEntry = {
   name: 'Zoom out',
   module: 'core',
   category: 'navigation',
-  description: 'Zoom the camera away from the surface',
+  description: 'Zoom out one step (increases altitude by ~2.5x). Only for small incremental adjustments. For large jumps or specific altitudes, use core:zoom-to instead.',
   patterns: ['zoom out', 'further', 'pull back', 'back up'],
   params: [],
   handler: () => {
@@ -178,7 +178,7 @@ const zoomTo: CommandEntry = {
   name: 'Zoom to altitude',
   module: 'core',
   category: 'navigation',
-  description: 'Set the camera to a specific altitude in kilometers (e.g. zoom to 500km, zoom to 10000km)',
+  description: 'Set the camera to a specific altitude in kilometers. PREFERRED for any request involving "close look", "street level", "see details", or large altitude changes. Examples: close look = 0.3, city view = 5, country view = 500, continental = 5000.',
   patterns: ['zoom to {altitude}', 'altitude {altitude}'],
   params: [
     { name: 'altitude', type: 'number', required: true, description: 'Target altitude in kilometers' },
