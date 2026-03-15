@@ -57,7 +57,7 @@ const goTo: CommandEntry = {
           destination: Cesium.Cartesian3.fromDegrees(location.lon, location.lat, location.height ?? 50_000),
           duration: 2.0,
         })
-        return `Flying to ${place}`
+        return `Flying to ${place} (${location.lat}, ${location.lon})`
       }
 
       console.log('[go-to] Location not in lookup table, trying geocoder...')
@@ -117,7 +117,7 @@ const goTo: CommandEntry = {
           destination: Cesium.Cartesian3.fromDegrees(lon, lat, height),
           duration: 2.0,
         })
-        return `Flying to ${best.display_name}`
+        return `Flying to ${best.display_name} (${lat}, ${lon})`
       } else {
         return `Could not find location: ${place}`
       }
@@ -638,9 +638,81 @@ const listBaseMaps: CommandEntry = {
   },
 }
 
+// --- Look-at command (ground-level views) ---
+
+const lookAt: CommandEntry = {
+  id: 'core:look-at',
+  name: 'Look at target',
+  module: 'core',
+  category: 'navigation',
+  description: 'Position the camera near a target and look at it. Use this for ground-level or eye-level views of landmarks, buildings, and features. The camera is placed at a specified distance and height from the target, aimed toward it. Parameters: lat/lon of the target, distance in meters (how far the camera is from the target, default 200), height in meters (camera altitude above ground, default 50), and heading in degrees (direction to look FROM, 0=south-of-target-looking-north, 90=west-of-target-looking-east, default 0).',
+  patterns: ['look at {place}', 'view {place} from ground'],
+  params: [
+    { name: 'lat', type: 'number', required: true, description: 'Target latitude in degrees' },
+    { name: 'lon', type: 'number', required: true, description: 'Target longitude in degrees' },
+    { name: 'distance', type: 'number', required: false, description: 'Distance from target in meters (default 200)' },
+    { name: 'height', type: 'number', required: false, description: 'Camera height above ground in meters (default 50)' },
+    { name: 'heading', type: 'number', required: false, description: 'Direction to view FROM in degrees. 0 = camera south of target looking north. 90 = camera west looking east. (default 0)' },
+  ],
+  handler: (params) => {
+    const viewer = getViewer()
+    if (!viewer) return 'No viewer available'
+
+    const targetLat = typeof params.lat === 'number' ? params.lat : parseFloat(String(params.lat))
+    const targetLon = typeof params.lon === 'number' ? params.lon : parseFloat(String(params.lon))
+    if (isNaN(targetLat) || isNaN(targetLon)) return 'Invalid coordinates'
+
+    const distance = typeof params.distance === 'number' ? params.distance : (params.distance ? parseFloat(String(params.distance)) : 200)
+    const height = typeof params.height === 'number' ? params.height : (params.height ? parseFloat(String(params.height)) : 50)
+    const headingDeg = typeof params.heading === 'number' ? params.heading : (params.heading ? parseFloat(String(params.heading)) : 0)
+
+    playRumble()
+
+    // Compute camera position: offset from target by `distance` meters in the direction
+    // specified by heading. Heading 0 = camera is SOUTH of target, looking NORTH toward it.
+    const headingRad = Cesium.Math.toRadians(headingDeg)
+    const targetCartographic = Cesium.Cartographic.fromDegrees(targetLon, targetLat)
+
+    // Approximate meter offsets using local tangent plane
+    // At the target latitude, 1 degree lat ~ 111,320m, 1 degree lon ~ 111,320 * cos(lat)
+    const metersPerDegreeLat = 111_320
+    const metersPerDegreeLon = 111_320 * Math.cos(Cesium.Math.toRadians(targetLat))
+
+    // Camera offset: heading 0 means camera is south (negative lat offset), looking north
+    const latOffset = -Math.cos(headingRad) * distance / metersPerDegreeLat
+    const lonOffset = -Math.sin(headingRad) * distance / metersPerDegreeLon
+
+    const cameraLat = targetLat + latOffset
+    const cameraLon = targetLon + lonOffset
+
+    // Compute pitch: angle from horizontal to look up at the target
+    // If camera is lower than target, pitch up; if higher, pitch down
+    // For ground-level views, a slight upward pitch looks natural
+    const pitchRad = -Math.atan2(height, distance) + Cesium.Math.toRadians(15) // tilt up 15° from level
+
+    // Heading from camera toward target is opposite of the offset direction
+    const lookHeadingRad = Cesium.Math.toRadians((headingDeg + 180) % 360)
+
+    console.log(`[look-at] Camera at (${cameraLat.toFixed(5)}, ${cameraLon.toFixed(5)}, ${height}m), looking toward (${targetLat}, ${targetLon}), heading ${((headingDeg + 180) % 360).toFixed(0)}°, pitch ${Cesium.Math.toDegrees(pitchRad).toFixed(1)}°`)
+
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(cameraLon, cameraLat, height),
+      orientation: {
+        heading: lookHeadingRad,
+        pitch: pitchRad,
+        roll: 0,
+      },
+      duration: 2.0,
+    })
+
+    const dirLabel = headingDeg === 0 ? 'south' : headingDeg === 90 ? 'west' : headingDeg === 180 ? 'north' : headingDeg === 270 ? 'east' : `${headingDeg}°`
+    return `Positioned camera ${Math.round(distance)}m ${dirLabel} of target at ${Math.round(height)}m height, looking toward (${targetLat.toFixed(4)}, ${targetLon.toFixed(4)})`
+  },
+}
+
 /** All core commands */
 export const coreCommands: CommandEntry[] = [
-  goTo, resetView, zoomIn, zoomOut, zoomTo, faceNorth,
+  goTo, resetView, zoomIn, zoomOut, zoomTo, faceNorth, lookAt,
   toggleBuildings, toggleTerrain, toggleLighting, setTimeOfDay,
   baseMap, listBaseMaps,
   muteToggle, whatCanYouDo, fullscreen, setProvider, setCesiumToken,
