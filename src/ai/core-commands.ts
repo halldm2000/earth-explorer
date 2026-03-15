@@ -22,7 +22,7 @@ import { toggleMute, isMuted, playRumble } from '@/audio/sounds'
  */
 function flyToAsync(
   camera: Cesium.Camera,
-  options: Cesium.CameraFlyToOptions,
+  options: Parameters<Cesium.Camera['flyTo']>[0],
 ): Promise<void> {
   return new Promise((resolve) => {
     camera.flyTo({
@@ -244,9 +244,13 @@ const zoomTo: CommandEntry = {
     if (isNaN(altKm) || altKm <= 0) return 'Invalid altitude'
     playRumble()
     const pos = viewer.camera.positionCartographic
-    const altMeters = Math.min(Math.max(altKm * 1000, 100), 25_000_000)
+    const altAGL = Math.min(Math.max(altKm * 1000, 100), 25_000_000)
+    // Get terrain height so altitude is above ground level, not above ellipsoid
+    const terrain = viewer.scene.globe.getHeight(pos)
+    const terrainHeight = terrain ?? 0
+    const altMSL = altAGL + terrainHeight
     await flyToAsync(viewer.camera, {
-      destination: Cesium.Cartesian3.fromRadians(pos.longitude, pos.latitude, altMeters),
+      destination: Cesium.Cartesian3.fromRadians(pos.longitude, pos.latitude, altMSL),
       orientation: {
         heading: viewer.camera.heading,
         pitch: viewer.camera.pitch,
@@ -254,28 +258,47 @@ const zoomTo: CommandEntry = {
       },
       duration: 1.5,
     })
-    return `Zooming to ${altKm} km altitude`
+    return `Zooming to ${altKm} km above ground level`
   },
 }
 
-const faceNorth: CommandEntry = {
-  id: 'core:face-north',
-  name: 'Face north',
+const directionHeadings: Record<string, number> = {
+  north: 0, south: 180, east: 90, west: 270,
+  northeast: 45, northwest: 315, southeast: 135, southwest: 225,
+}
+
+const faceDirection: CommandEntry = {
+  id: 'core:face',
+  name: 'Face direction',
   module: 'core',
   category: 'navigation',
-  description: 'Rotate the camera to face north',
-  patterns: ['face north', 'north up', 'orient north'],
-  params: [],
-  handler: async () => {
+  description: 'Rotate the camera to face a compass direction or numeric heading. Accepts named directions (north, south, east, west, northeast, etc.) or a heading in degrees (0=north, 90=east, 180=south, 270=west).',
+  patterns: ['face north', 'north up', 'orient north', 'face south', 'face east', 'face west', 'face northeast', 'face northwest', 'face southeast', 'face southwest', 'heading {heading}'],
+  params: [
+    { name: 'direction', type: 'string', required: false, description: 'Compass direction: north, south, east, west, northeast, northwest, southeast, southwest' },
+    { name: 'heading', type: 'number', required: false, description: 'Heading in degrees (0=north, 90=east, 180=south, 270=west)' },
+  ],
+  handler: async (params) => {
     const viewer = getViewer()
     if (!viewer) return
+    let headingDeg: number
+    let label: string
+    if (typeof params.heading === 'number') {
+      headingDeg = params.heading % 360
+      label = `${headingDeg}°`
+    } else {
+      const dir = (typeof params.direction === 'string' ? params.direction : 'north').toLowerCase()
+      headingDeg = directionHeadings[dir] ?? 0
+      label = dir
+    }
     playRumble()
     const pos = viewer.camera.positionCartographic
     await flyToAsync(viewer.camera, {
       destination: Cesium.Cartesian3.fromRadians(pos.longitude, pos.latitude, pos.height),
-      orientation: { heading: 0, pitch: viewer.camera.pitch, roll: 0 },
+      orientation: { heading: Cesium.Math.toRadians(headingDeg), pitch: Cesium.Math.toRadians(-30), roll: 0 },
       duration: 1.0,
     })
+    return `Facing ${label}`
   },
 }
 
@@ -740,7 +763,7 @@ const lookAt: CommandEntry = {
 
 /** All core commands */
 export const coreCommands: CommandEntry[] = [
-  goTo, resetView, zoomIn, zoomOut, zoomTo, faceNorth, lookAt,
+  goTo, resetView, zoomIn, zoomOut, zoomTo, faceDirection, lookAt,
   toggleBuildings, toggleTerrain, toggleLighting, setTimeOfDay,
   baseMap, listBaseMaps,
   muteToggle, whatCanYouDo, fullscreen, setProvider, setCesiumToken,
