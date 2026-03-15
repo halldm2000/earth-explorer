@@ -125,6 +125,9 @@ export interface CommandEntry {
   category?: 'navigation' | 'view' | 'data' | 'audio' | 'system' | 'feature'
   /** If true, this command is hidden from AI tool generation (e.g. set-key) */
   aiHidden?: boolean
+  /** If true, always route through AI chat (Tier 2), never the fast classifier.
+   *  Use for tools whose results need AI interpretation (e.g. screenshot -> vision). */
+  chatOnly?: boolean
 }
 
 // --- Router types ---

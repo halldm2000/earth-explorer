@@ -127,6 +127,7 @@ const queryScreenshot: CommandEntry = {
   patterns: ['screenshot', 'what do you see', 'describe the view'],
   params: [],
   aiHidden: false,
+  chatOnly: true, // Must go through AI chat so the model can see and describe the image
   handler: async (): Promise<ContentBlock[]> => {
     const viewer = getViewer()
     if (!viewer) return [{ type: 'text', text: 'Viewer not initialized' }]

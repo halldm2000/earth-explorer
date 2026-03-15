@@ -78,7 +78,10 @@ export async function route(input: string, history?: ChatMessage[]): Promise<Rou
     if (classified) {
       console.log(`[router] AI classified: ${classified.commandId}`, classified.params)
       const command = registry.get(classified.commandId)
-      if (command) {
+      if (command && command.chatOnly) {
+        // This command needs the full AI chat loop (e.g. screenshot needs vision)
+        console.log(`[router] ${command.id} is chatOnly, routing to chat`)
+      } else if (command) {
         try {
           const result = await command.handler(classified.params)
           // Check for text output (e.g. help, list)
@@ -167,7 +170,8 @@ async function classifyIntent(
   provider: AIProvider,
   input: string,
 ): Promise<ClassifiedIntent | null> {
-  const commands = registry.getAll().filter(c => !c.aiHidden)
+  // Exclude chatOnly commands from classifier (they'll always route to chat anyway)
+  const commands = registry.getAll().filter(c => !c.aiHidden && !c.chatOnly)
   const commandSummary = commands.map(c => {
     const params = c.params
       .filter(p => p.name !== '_raw')
@@ -216,13 +220,23 @@ Rules:
     // Parse the JSON response (strip code fences, trailing text, etc.)
     let cleaned = responseText.trim()
     cleaned = cleaned.replace(/^```json?\s*/i, '').replace(/\s*```\s*$/, '')
-    // Extract the first JSON object if there's trailing text
-    const jsonMatch = cleaned.match(/\{[^}]*\}/)
-    if (!jsonMatch) {
+    // Extract the first JSON object, handling nested braces (e.g. {"command":"x","params":{"a":1}})
+    const jsonStart = cleaned.indexOf('{')
+    if (jsonStart < 0) {
       console.warn('[router] Classifier returned non-JSON:', cleaned)
       return null
     }
-    const parsed = JSON.parse(jsonMatch[0])
+    let depth = 0
+    let jsonEnd = -1
+    for (let i = jsonStart; i < cleaned.length; i++) {
+      if (cleaned[i] === '{') depth++
+      else if (cleaned[i] === '}') { depth--; if (depth === 0) { jsonEnd = i + 1; break } }
+    }
+    if (jsonEnd < 0) {
+      console.warn('[router] Classifier returned unclosed JSON:', cleaned)
+      return null
+    }
+    const parsed = JSON.parse(cleaned.slice(jsonStart, jsonEnd))
 
     if (parsed.command === 'chat' || !parsed.command) {
       console.log('[router] Classifier says: chat')
