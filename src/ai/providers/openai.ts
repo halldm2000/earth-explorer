@@ -8,6 +8,7 @@
  */
 
 import type { AIProvider, ChatMessage, ChatOptions, ToolDef, StreamEvent } from '../types'
+import { parseAPIError, parseNetworkError } from '../errors'
 
 export interface OpenAIProviderConfig {
   /** Display name (e.g. 'openai', 'ollama', 'openrouter') */
@@ -79,22 +80,31 @@ export class OpenAIProvider implements AIProvider {
 
     const url = `${this.config.baseUrl.replace(/\/$/, '')}/chat/completions`
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    })
+    let response: Response
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      })
+    } catch (err) {
+      const parsed = parseNetworkError(err, this.name)
+      yield { type: 'error', message: parsed.message }
+      yield { type: 'done' }
+      return
+    }
 
     if (!response.ok) {
-      const err = await response.text()
-      yield { type: 'text', content: `Error: ${response.status} - ${err}` }
+      const errBody = await response.text()
+      const parsed = parseAPIError(response.status, errBody, this.name)
+      yield { type: 'error', message: parsed.message }
       yield { type: 'done' }
       return
     }
 
     const reader = response.body?.getReader()
     if (!reader) {
-      yield { type: 'text', content: 'Error: No response stream' }
+      yield { type: 'error', message: `No response stream from ${this.name}.` }
       yield { type: 'done' }
       return
     }

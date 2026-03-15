@@ -15,7 +15,7 @@ export interface ChatSlice {
   // Messages
   messages: ChatEntry[]
   addMessage: (entry: Omit<ChatEntry, 'id' | 'timestamp'>) => void
-  updateLastAssistant: (content: string) => void
+  updateLastAssistant: (content: string, isError?: boolean) => void
   clearMessages: () => void
 
   // Input
@@ -50,12 +50,12 @@ export const createChatSlice: StateCreator<ChatSlice> = (set, get) => ({
       messages: [...s.messages, { ...entry, id, timestamp: Date.now() }],
     }))
   },
-  updateLastAssistant: (content) => {
+  updateLastAssistant: (content, isError) => {
     set(s => {
       const msgs = [...s.messages]
       for (let i = msgs.length - 1; i >= 0; i--) {
         if (msgs[i].role === 'assistant') {
-          msgs[i] = { ...msgs[i], content }
+          msgs[i] = { ...msgs[i], content, ...(isError !== undefined ? { isError } : {}) }
           break
         }
       }

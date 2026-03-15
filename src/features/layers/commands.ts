@@ -41,7 +41,8 @@ const toggleLayerCmd: CommandEntry = {
   description: 'Toggle a data layer on or off (borders, coastlines, rivers)',
   patterns: buildLayerPatterns(),
   params: [
-    { name: 'layer', type: 'string', required: true, description: 'Layer name or id' },
+    { name: 'layer', type: 'string', required: true, description: 'Layer name or id (borders, coastlines, rivers)' },
+    { name: 'action', type: 'enum', required: false, description: 'Whether to show, hide, or toggle the layer', options: ['show', 'hide', 'toggle'] },
   ],
   handler: async (params) => {
     const raw = String(params._raw ?? '').toLowerCase()
@@ -70,13 +71,13 @@ const toggleLayerCmd: CommandEntry = {
 
     if (!match) {
       const available = all.map(l => l.def.name).join(', ')
-      console.log(`[layers] Unknown layer "${input}". Available: ${available}`)
-      return
+      return `Unknown layer "${input}". Available: ${available}`
     }
 
-    // Determine intent from the raw command text
-    const wantsHide = raw.startsWith('hide') || raw.startsWith('turn off') || raw.endsWith('off')
-    const wantsShow = raw.startsWith('show') || raw.startsWith('turn on') || raw.endsWith(' on')
+    // Determine intent: from explicit action param (AI tool use), or from raw command text
+    const action = String(params.action ?? '').toLowerCase()
+    const wantsHide = action === 'hide' || raw.startsWith('hide') || raw.startsWith('turn off') || raw.endsWith('off')
+    const wantsShow = action === 'show' || raw.startsWith('show') || raw.startsWith('turn on') || raw.endsWith(' on')
 
     if (wantsHide) {
       hideLayer(match.def.id)
@@ -88,7 +89,7 @@ const toggleLayerCmd: CommandEntry = {
 
     playPing()
     const state = match.visible ? 'on' : 'off'
-    console.log(`[layers] ${match.def.name}: ${state}`)
+    return `${match.def.name}: ${state}`
   },
 }
 

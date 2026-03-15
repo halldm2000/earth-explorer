@@ -7,6 +7,7 @@
  */
 
 import type { AIProvider, ChatMessage, ChatOptions, ToolDef, StreamEvent } from '../types'
+import { parseAPIError, parseNetworkError } from '../errors'
 
 export class ClaudeProvider implements AIProvider {
   readonly name = 'claude'
@@ -52,27 +53,36 @@ export class ClaudeProvider implements AIProvider {
       }))
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify(body),
-    })
+    let response: Response
+    try {
+      response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': this.apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify(body),
+      })
+    } catch (err) {
+      const parsed = parseNetworkError(err, 'Anthropic')
+      yield { type: 'error', message: parsed.message }
+      yield { type: 'done' }
+      return
+    }
 
     if (!response.ok) {
-      const err = await response.text()
-      yield { type: 'text', content: `Error: ${response.status} - ${err}` }
+      const body = await response.text()
+      const parsed = parseAPIError(response.status, body, 'Anthropic')
+      yield { type: 'error', message: parsed.message }
       yield { type: 'done' }
       return
     }
 
     const reader = response.body?.getReader()
     if (!reader) {
-      yield { type: 'text', content: 'Error: No response stream' }
+      yield { type: 'error', message: 'No response stream from Anthropic.' }
       yield { type: 'done' }
       return
     }

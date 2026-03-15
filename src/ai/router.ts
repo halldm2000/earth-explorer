@@ -142,6 +142,10 @@ async function* runAIWithTools(
         yield event.content
         hasText = true
       }
+      if (event.type === 'error') {
+        yield `\x00ERR\x00${event.message}`
+        return
+      }
       if (event.type === 'tool_call') {
         pendingCalls.push(event.call)
       }
@@ -161,6 +165,11 @@ async function* runAIWithTools(
     })
 
     for (const call of pendingCalls) {
+      // Show the user what tool is being called
+      const command = registry.get(call.name.replace(/_/, ':')) || registry.get(call.name)
+      const toolLabel = command?.name || call.name
+      yield `\x00TOOL\x00${toolLabel}\n`
+
       const result = await executeToolCall(call)
       console.log(`[router] Tool ${call.name}: ${result.content}`)
 
@@ -170,11 +179,6 @@ async function* runAIWithTools(
         content: result.content,
         toolCallId: call.id,
       })
-
-      // Show a brief status to the user while the AI processes results
-      if (!hasText) {
-        yield '' // keep the stream alive
-      }
     }
 
     // Loop back: the provider will see the tool results and continue
@@ -189,7 +193,10 @@ async function* runAIWithTools(
  * Execute a single tool call by looking up the command in the registry.
  */
 async function executeToolCall(call: ToolCall): Promise<{ content: string; isError: boolean }> {
-  const command = registry.get(call.name)
+  // Tool names replace colons with underscores (API naming rules).
+  // Reverse: core_go-to -> core:go-to, layers_toggle -> layers:toggle
+  const commandId = call.name.replace(/_/, ':')
+  const command = registry.get(commandId) || registry.get(call.name)
   if (!command) {
     return { content: `Unknown command: ${call.name}`, isError: true }
   }
@@ -215,7 +222,7 @@ function buildToolDefs(): ToolDef[] {
   return commands
     .filter(cmd => !cmd.aiHidden)
     .map(cmd => ({
-      name: cmd.id,
+      name: cmd.id.replace(/:/g, '_'),
       description: `${cmd.name}: ${cmd.description}`,
       parameters: {
         type: 'object' as const,

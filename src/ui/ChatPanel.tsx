@@ -119,9 +119,29 @@ export function ChatPanel() {
       }
 
       let accumulated = ''
+      let toolActions: string[] = []
       for await (const chunk of result.response) {
+        // Check for error marker from router
+        if (chunk.startsWith('\x00ERR\x00')) {
+          accumulated = chunk.slice(5) // strip marker
+          updateLastAssistant(accumulated, true)
+          break
+        }
+        // Check for tool execution marker
+        if (chunk.startsWith('\x00TOOL\x00')) {
+          const toolName = chunk.slice(6).trim()
+          toolActions.push(toolName)
+          const prefix = toolActions.map(t => `⚡ ${t}`).join('\n') + '\n'
+          updateLastAssistant(prefix + accumulated)
+          continue
+        }
         accumulated += chunk
-        updateLastAssistant(accumulated)
+        if (toolActions.length > 0) {
+          const prefix = toolActions.map(t => `⚡ ${t}`).join('\n') + '\n'
+          updateLastAssistant(prefix + accumulated)
+        } else {
+          updateLastAssistant(accumulated)
+        }
       }
     }
   }, [inputValue, messages, panelState, setInputValue, addMessage, updateLastAssistant, setStatusText, setPanelState])
@@ -139,7 +159,8 @@ export function ChatPanel() {
           {messages
             .slice(panelState === 'peek' ? -6 : 0)
             .map(msg => (
-              <div key={msg.id} style={messageBubbleStyle(msg.role)}>
+              <div key={msg.id} style={messageBubbleStyle(msg.role, msg.isError)}>
+                {msg.isError && <span style={errorIconStyle}>!</span>}
                 {msg.content || '...'}
               </div>
             ))
@@ -258,8 +279,28 @@ function messageAreaStyle(state: PanelState): React.CSSProperties {
   }
 }
 
-function messageBubbleStyle(role: string): React.CSSProperties {
+function messageBubbleStyle(role: string, isError?: boolean): React.CSSProperties {
   const isUser = role === 'user'
+
+  if (isError) {
+    return {
+      padding: '8px 12px',
+      borderRadius: 10,
+      fontSize: 14,
+      lineHeight: 1.5,
+      maxWidth: '85%',
+      alignSelf: 'flex-start',
+      background: 'rgba(220, 60, 60, 0.12)',
+      color: 'rgba(255, 180, 180, 0.95)',
+      border: '1px solid rgba(220, 60, 60, 0.3)',
+      whiteSpace: 'pre-wrap',
+      wordBreak: 'break-word',
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: 8,
+    }
+  }
+
   return {
     padding: '8px 12px',
     borderRadius: 10,
@@ -273,6 +314,21 @@ function messageBubbleStyle(role: string): React.CSSProperties {
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
   }
+}
+
+const errorIconStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 18,
+  height: 18,
+  borderRadius: '50%',
+  background: 'rgba(220, 60, 60, 0.4)',
+  color: '#ff9999',
+  fontSize: 11,
+  fontWeight: 700,
+  flexShrink: 0,
+  marginTop: 1,
 }
 
 const statusStyle: React.CSSProperties = {

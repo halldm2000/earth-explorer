@@ -47,6 +47,7 @@ export interface ToolResult {
 export type StreamEvent =
   | { type: 'text'; content: string }
   | { type: 'tool_call'; call: ToolCall }
+  | { type: 'error'; message: string }
   | { type: 'done' }
 
 // --- Provider interface ---
@@ -135,4 +136,6 @@ export interface ChatEntry {
   timestamp: number
   /** If this message triggered a command */
   command?: string
+  /** True if this message is an error */
+  isError?: boolean
 }

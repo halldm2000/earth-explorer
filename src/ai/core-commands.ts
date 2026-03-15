@@ -46,7 +46,7 @@ const goTo: CommandEntry = {
           destination: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
           duration: 2.0,
         })
-        return
+        return `Flying to coordinates (${lon}, ${lat})`
       }
 
       // Named location lookup (common cities, will be extended)
@@ -57,7 +57,7 @@ const goTo: CommandEntry = {
           destination: Cesium.Cartesian3.fromDegrees(location.lon, location.lat, location.height ?? 50_000),
           duration: 2.0,
         })
-        return
+        return `Flying to ${place}`
       }
 
       console.log('[go-to] Location not in lookup table, trying geocoder...')
@@ -70,7 +70,6 @@ const goTo: CommandEntry = {
       if (data && data.length > 0) {
         const lat = parseFloat(data[0].lat)
         const lon = parseFloat(data[0].lon)
-        // Estimate zoom based on place type
         const type = data[0].type || ''
         let height = 50_000
         if (['continent'].includes(type)) height = 5_000_000
@@ -85,11 +84,13 @@ const goTo: CommandEntry = {
           destination: Cesium.Cartesian3.fromDegrees(lon, lat, height),
           duration: 2.0,
         })
+        return `Flying to ${data[0].display_name}`
       } else {
-        console.warn('[go-to] No geocoder results for:', place)
+        return `Could not find location: ${place}`
       }
     } catch (err) {
       console.error('[go-to] Error:', err)
+      return `Error navigating to ${place}`
     }
   },
 }
