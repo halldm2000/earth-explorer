@@ -17,6 +17,9 @@
  */
 
 import { registry } from './registry'
+import { getViewer, getBaseMapStyle, getBuildingMode } from '@/scene/engine'
+import { getAllLayers } from '@/features/layers/manager'
+import * as Cesium from 'cesium'
 import type {
   AIProvider, CommandEntry, RouteResult, ChatMessage, ChatOptions,
   ToolDef, ToolCall, StreamEvent,
@@ -173,7 +176,12 @@ async function classifyIntent(
     return `  ${c.id}(${params}) - ${c.description}`
   }).join('\n')
 
+  const state = getStateSnapshot()
+
   const classifierPrompt = `You are a command classifier for a 3D globe app. Given user input, determine if it maps to exactly ONE command, or if it needs a conversational response.
+
+Current state:
+${state}
 
 Available commands (use these EXACT IDs only):
 ${commandSummary}
@@ -182,6 +190,7 @@ Rules:
 - If the input maps to exactly one command, respond with JSON: {"command":"<exact-id>","params":{...}}
 - If it's a question, conversation, compound request (multiple actions), or ambiguous, respond with: {"command":"chat"}
 - You MUST use one of the exact command IDs listed above. Do NOT invent command IDs.
+- For relative adjustments (e.g. "go up 10m"), use the current altitude from state and compute the target. Example: current altitude 500m + "go up 10m" = {"command":"core:zoom-to","params":{"altitude":0.51}}
 - For compound requests like "go to X and show Y", always return {"command":"chat"}
 - Respond ONLY with valid JSON, no other text.`
 
@@ -204,9 +213,16 @@ Rules:
       }
     }
 
-    // Parse the JSON response
-    const cleaned = responseText.trim().replace(/^```json?\s*/, '').replace(/\s*```$/, '')
-    const parsed = JSON.parse(cleaned)
+    // Parse the JSON response (strip code fences, trailing text, etc.)
+    let cleaned = responseText.trim()
+    cleaned = cleaned.replace(/^```json?\s*/i, '').replace(/\s*```\s*$/, '')
+    // Extract the first JSON object if there's trailing text
+    const jsonMatch = cleaned.match(/\{[^}]*\}/)
+    if (!jsonMatch) {
+      console.warn('[router] Classifier returned non-JSON:', cleaned)
+      return null
+    }
+    const parsed = JSON.parse(jsonMatch[0])
 
     if (parsed.command === 'chat' || !parsed.command) {
       console.log('[router] Classifier says: chat')
@@ -449,6 +465,44 @@ function tryMatch(input: string, pattern: string, cmd: CommandEntry): PatternMat
   return null
 }
 
+// ── Viewer state snapshot ──
+
+/**
+ * Capture the current viewer state as a compact string for AI context.
+ * Injected into both the classifier and chat system prompts so the AI
+ * can make relative adjustments ("go up 10m", "zoom in closer") and
+ * knows which layers/maps are already active.
+ */
+function getStateSnapshot(): string {
+  const viewer = getViewer()
+  if (!viewer) return 'Viewer not initialized.'
+
+  const pos = viewer.camera.positionCartographic
+  const lat = Cesium.Math.toDegrees(pos.latitude).toFixed(4)
+  const lon = Cesium.Math.toDegrees(pos.longitude).toFixed(4)
+  const altM = pos.height
+  const altStr = altM > 1000
+    ? `${(altM / 1000).toFixed(1)} km`
+    : `${Math.round(altM)} m`
+  const heading = Cesium.Math.toDegrees(viewer.camera.heading).toFixed(0)
+  const pitch = Cesium.Math.toDegrees(viewer.camera.pitch).toFixed(0)
+
+  const baseMap = getBaseMapStyle()
+  const buildings = getBuildingMode()
+
+  const layers = getAllLayers()
+  const activeLayers = layers.filter(l => l.visible).map(l => l.def.name)
+  const inactiveLayers = layers.filter(l => !l.visible).map(l => l.def.name)
+
+  const lines = [
+    `Camera: lat ${lat}, lon ${lon}, altitude ${altStr}, heading ${heading}°, pitch ${pitch}°`,
+    `Base map: ${baseMap}, Buildings: ${buildings}`,
+    `Active layers: ${activeLayers.length > 0 ? activeLayers.join(', ') : 'none'}`,
+    `Available (off): ${inactiveLayers.length > 0 ? inactiveLayers.join(', ') : 'none'}`,
+  ]
+  return lines.join('\n')
+}
+
 // ── Provider selection ──
 
 async function findProvider(): Promise<AIProvider | null> {
@@ -469,9 +523,14 @@ function buildSystemPrompt(): string {
     .map(c => `- "${c.patterns[0]}": ${c.description}`)
     .join('\n')
 
+  const state = getStateSnapshot()
+
   let prompt = `You are an AI assistant embedded in Earth Explorer, an interactive 3D globe application built with CesiumJS. You help users explore and understand Earth through data visualization, scientific analysis, and natural conversation.
 
-You have tools available to control the globe directly. When the user asks you to navigate, toggle layers, change maps, or perform any action, use the appropriate tool. You can call multiple tools in sequence.
+Current viewer state:
+${state}
+
+You have tools available to control the globe directly. When the user asks you to navigate, toggle layers, change maps, or perform any action, use the appropriate tool. You can call multiple tools in sequence. Use the current state above to handle relative requests (e.g. "go up 10m" means add 10m to the current altitude).
 
 Available commands (users can also type these directly):
 ${commandList}
