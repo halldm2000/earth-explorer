@@ -26,6 +26,10 @@ export interface ChatSlice {
   statusText: string | null
   setStatusText: (text: string | null) => void
 
+  // Processing state
+  isProcessing: boolean
+  setIsProcessing: (v: boolean) => void
+
   // AI config
   anthropicKey: string | null
   setAnthropicKey: (key: string | null) => void
@@ -69,6 +73,9 @@ export const createChatSlice: StateCreator<ChatSlice> = (set, get) => ({
 
   statusText: null,
   setStatusText: (text) => set({ statusText: text }),
+
+  isProcessing: false,
+  setIsProcessing: (v) => set({ isProcessing: v }),
 
   anthropicKey: import.meta.env.VITE_ANTHROPIC_API_KEY || localStorage.getItem('ee-anthropic-key'),
   setAnthropicKey: (key) => {

@@ -56,10 +56,15 @@ export async function route(input: string, history?: ChatMessage[]): Promise<Rou
     return { tier: 'pattern', params: {} }
   }
 
-  // --- Tier 0: Pattern matching ---
+  // --- Tier 0: Pattern matching (high-confidence only) ---
+  // Only fires for near-exact matches (score >= 0.95). Anything ambiguous,
+  // compound, or conversational falls through to the AI for proper handling.
+  // This keeps simple commands instant and free while the AI handles the rest.
+  const PATTERN_THRESHOLD = 0.95
   const patternMatch = matchPattern(trimmed, registry.getAll())
-  if (patternMatch) {
-    console.log('[router] Tier 0 match:', patternMatch.command.id, patternMatch.params)
+  const isCompound = patternMatch && looksCompound(patternMatch.params)
+  if (patternMatch && patternMatch.score >= PATTERN_THRESHOLD && !isCompound) {
+    console.log(`[router] Tier 0 match: ${patternMatch.command.id} (score: ${patternMatch.score.toFixed(3)})`, patternMatch.params)
     try {
       await patternMatch.command.handler(patternMatch.params)
     } catch (err) {
@@ -198,14 +203,18 @@ async function executeToolCall(call: ToolCall): Promise<{ content: string; isErr
   const commandId = call.name.replace(/_/, ':')
   const command = registry.get(commandId) || registry.get(call.name)
   if (!command) {
+    console.warn(`[router] Tool lookup failed: "${call.name}" -> "${commandId}" not in registry`)
     return { content: `Unknown command: ${call.name}`, isError: true }
   }
 
   try {
+    console.log(`[router] Executing: ${command.id}`, JSON.stringify(call.arguments))
     const result = await command.handler(call.arguments)
     const message = typeof result === 'string' ? result : `Executed ${command.name}`
+    console.log(`[router] Result: ${message}`)
     return { content: message, isError: false }
   } catch (err) {
+    console.error(`[router] Tool error in ${command.id}:`, err)
     const message = err instanceof Error ? err.message : String(err)
     return { content: `Error executing ${command.name}: ${message}`, isError: true }
   }
@@ -248,6 +257,17 @@ function paramToJsonSchema(param: CommandParam): { type: string; description?: s
 }
 
 import type { CommandParam } from './types'
+
+// ── Compound request detection ──
+
+/** Check if extracted params contain signs of a multi-action request. */
+function looksCompound(params: Record<string, unknown>): boolean {
+  const actionVerbs = /\b(and|then|also|plus)\b\s+(show|hide|toggle|turn|switch|go|fly|zoom|set|reset|change|enable|disable)\b/i
+  for (const val of Object.values(params)) {
+    if (typeof val === 'string' && actionVerbs.test(val)) return true
+  }
+  return false
+}
 
 // ── Tier 0: Pattern matching ──
 

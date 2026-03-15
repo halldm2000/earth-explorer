@@ -25,6 +25,8 @@ export function ChatPanel() {
   const setStatusText = useStore(s => s.setStatusText)
   const cyclePanelState = useStore(s => s.cyclePanelState)
   const setPanelState = useStore(s => s.setPanelState)
+  const isProcessing = useStore(s => s.isProcessing)
+  const setIsProcessing = useStore(s => s.setIsProcessing)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -76,9 +78,11 @@ export function ChatPanel() {
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     const text = inputValue.trim()
-    if (!text) return
+    if (!text || isProcessing) return
 
     setInputValue('')
+    setIsProcessing(true)
+
     // Warm up audio on user gesture (required by Chrome autoplay policy)
     await warmUp()
 
@@ -89,7 +93,15 @@ export function ChatPanel() {
     const history = messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
     // Route through AI system
-    const result = await route(text, history)
+    let result
+    try {
+      result = await route(text, history)
+    } catch (err) {
+      console.error('[chat] Route error:', err)
+      addMessage({ role: 'assistant', content: `Something went wrong: ${err instanceof Error ? err.message : String(err)}`, isError: true })
+      setIsProcessing(false)
+      return
+    }
 
     if (result.command && !result.response) {
       // Command was executed, show confirmation
@@ -144,7 +156,9 @@ export function ChatPanel() {
         }
       }
     }
-  }, [inputValue, messages, panelState, setInputValue, addMessage, updateLastAssistant, setStatusText, setPanelState])
+
+    setIsProcessing(false)
+  }, [inputValue, messages, panelState, isProcessing, setInputValue, addMessage, updateLastAssistant, setStatusText, setPanelState, setIsProcessing])
 
   // Autocomplete suggestions
   const suggestions = inputValue.length > 0
@@ -208,8 +222,9 @@ export function ChatPanel() {
           type="text"
           value={inputValue}
           onChange={e => setInputValue(e.target.value)}
-          placeholder="Ask anything or type a command... (Tab to focus, ` to expand)"
-          style={inputStyle}
+          disabled={isProcessing}
+          placeholder={isProcessing ? 'Thinking...' : 'Ask anything or type a command... (Tab to focus, ` to expand)'}
+          style={{ ...inputStyle, ...(isProcessing ? { opacity: 0.5 } : {}) }}
           onFocus={() => {
             // Don't auto-expand, let user control panel state
           }}
