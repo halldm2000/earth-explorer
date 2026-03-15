@@ -1,10 +1,10 @@
 /**
- * Shared viewer reference.
- * CesiumViewer sets this on init, core-commands reads it.
+ * Shared viewer reference and scene state.
+ * CesiumViewer sets this on init, commands and plugins read it.
  * Avoids fragile window globals.
  */
 
-import type * as Cesium from 'cesium'
+import * as Cesium from 'cesium'
 
 let _viewer: Cesium.Viewer | null = null
 
@@ -71,4 +71,86 @@ export function updateBuildingMode(altitude: number): void {
   } else if (_buildingMode === 'photorealistic' && altitude > SWITCH_UP) {
     setBuildingMode('osm')
   }
+}
+
+// ── Base map imagery styles ──
+
+export type BaseMapStyle = 'default' | 'satellite' | 'dark' | 'light' | 'road'
+
+interface BaseMapDef {
+  name: string
+  description: string
+  create: () => Promise<Cesium.ImageryProvider> | Cesium.ImageryProvider
+}
+
+const BASE_MAPS: Record<BaseMapStyle, BaseMapDef> = {
+  default: {
+    name: 'Default',
+    description: 'Satellite imagery with labels',
+    create: () => Cesium.createWorldImageryAsync({
+      style: Cesium.IonWorldImageryStyle.AERIAL_WITH_LABELS,
+    }),
+  },
+  satellite: {
+    name: 'Satellite',
+    description: 'Satellite imagery (no labels)',
+    create: () => Cesium.createWorldImageryAsync({
+      style: Cesium.IonWorldImageryStyle.AERIAL,
+    }),
+  },
+  dark: {
+    name: 'Dark',
+    description: 'CartoDB Dark Matter',
+    create: () => new Cesium.UrlTemplateImageryProvider({
+      url: 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+      credit: new Cesium.Credit('CartoDB'),
+      maximumLevel: 18,
+    }),
+  },
+  light: {
+    name: 'Light',
+    description: 'CartoDB Positron (light political)',
+    create: () => new Cesium.UrlTemplateImageryProvider({
+      url: 'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
+      credit: new Cesium.Credit('CartoDB'),
+      maximumLevel: 18,
+    }),
+  },
+  road: {
+    name: 'Road',
+    description: 'Road map with labels',
+    create: () => Cesium.createWorldImageryAsync({
+      style: Cesium.IonWorldImageryStyle.ROAD,
+    }),
+  },
+}
+
+let _currentBaseMap: BaseMapStyle = 'default'
+
+export function getBaseMapStyle(): BaseMapStyle { return _currentBaseMap }
+export function getBaseMapStyles(): { id: BaseMapStyle; name: string; description: string }[] {
+  return Object.entries(BASE_MAPS).map(([id, def]) => ({
+    id: id as BaseMapStyle,
+    name: def.name,
+    description: def.description,
+  }))
+}
+
+export async function setBaseMapStyle(style: BaseMapStyle): Promise<boolean> {
+  if (!_viewer) return false
+  const def = BASE_MAPS[style]
+  if (!def) return false
+  if (style === _currentBaseMap) return true
+
+  const provider = await def.create()
+
+  // Replace the base imagery layer (index 0)
+  const layers = _viewer.imageryLayers
+  if (layers.length > 0) {
+    layers.remove(layers.get(0), true)
+  }
+  layers.addImageryProvider(provider, 0)
+  _currentBaseMap = style
+  console.log(`[engine] Base map: ${def.name}`)
+  return true
 }

@@ -5,7 +5,11 @@
 
 import * as Cesium from 'cesium'
 import type { CommandEntry } from './types'
-import { getViewer, getBuildingMode, setBuildingMode, setAutoSwitch } from '@/scene/engine'
+import {
+  getViewer, getBuildingMode, setBuildingMode, setAutoSwitch,
+  setBaseMapStyle, getBaseMapStyles, getBaseMapStyle,
+  type BaseMapStyle,
+} from '@/scene/engine'
 import { toggleMute, isMuted, playRumble } from '@/audio/sounds'
 
 // --- Navigation commands ---
@@ -427,9 +431,85 @@ const KNOWN_LOCATIONS: Record<string, { lat: number; lon: number; height?: numbe
   'denver': { lat: 39.7392, lon: -104.9903, height: 30_000 },
 }
 
+// --- Base map style ---
+
+const baseMap: CommandEntry = {
+  id: 'core:base-map',
+  name: 'Change base map',
+  module: 'core',
+  category: 'view',
+  description: 'Switch base map style (default, satellite, dark, light, road)',
+  patterns: [
+    'base map {style}',
+    'map style {style}',
+    'switch map to {style}',
+    'dark map',
+    'light map',
+    'satellite map',
+    'road map',
+    'political map',
+  ],
+  params: [
+    {
+      name: 'style',
+      type: 'enum',
+      required: true,
+      description: 'Map style',
+      options: ['default', 'satellite', 'dark', 'light', 'road'],
+    },
+  ],
+  handler: async (params) => {
+    const raw = String(params._raw ?? '').toLowerCase()
+    let style = String(params.style ?? '').toLowerCase().trim()
+
+    // Handle exact-match patterns (no {style} param extracted)
+    if (!style || style === 'undefined') {
+      if (raw.includes('dark')) style = 'dark'
+      else if (raw.includes('light') || raw.includes('political')) style = 'light'
+      else if (raw.includes('satellite')) style = 'satellite'
+      else if (raw.includes('road')) style = 'road'
+      else style = 'default'
+    }
+
+    // Normalize aliases
+    if (style === 'political' || style === 'terrain') style = 'light'
+
+    const styles = getBaseMapStyles()
+    const match = styles.find(s => s.id === style)
+    if (!match) {
+      const available = styles.map(s => s.id).join(', ')
+      console.log(`[core] Unknown map style "${style}". Available: ${available}`)
+      return
+    }
+
+    await setBaseMapStyle(style as BaseMapStyle)
+  },
+}
+
+const listBaseMaps: CommandEntry = {
+  id: 'core:list-maps',
+  name: 'List base maps',
+  module: 'core',
+  category: 'view',
+  description: 'Show available base map styles',
+  patterns: ['list maps', 'map styles', 'available maps', 'base maps'],
+  params: [],
+  handler: () => {
+    const styles = getBaseMapStyles()
+    const current = getBaseMapStyle()
+    const lines = styles.map(s => {
+      const dot = s.id === current ? '●' : '○'
+      return `${dot} ${s.name} — ${s.description}`
+    })
+    const output = `**Base Maps** (${styles.length} available)\n\n${lines.join('\n')}\n\nSay "dark map" or "base map satellite" to switch.`
+    ;(listBaseMaps as any)._lastOutput = output
+  },
+}
+
 /** All core commands */
 export const coreCommands: CommandEntry[] = [
   goTo, resetView, zoomIn, zoomOut, faceNorth,
   toggleBuildings, toggleTerrain, toggleLighting, setTimeOfDay,
+  baseMap, listBaseMaps,
   muteToggle, whatCanYouDo, fullscreen, setApiKey,
 ]

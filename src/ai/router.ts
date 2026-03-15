@@ -213,9 +213,6 @@ Your role:
 - Use commas or parentheses instead of em dashes
 - Be direct and informative, not chatty
 
-Weather overlay:
-The app can display live weather data on the globe via Open-Meteo. Users can say "show weather" or "show temperature" to see a colored grid overlay. Available variables: temperature (°C), wind speed (m/s), precipitation (mm), humidity (%), cloud cover (%), and pressure (hPa). Users can switch between variables ("switch to wind") or hide the overlay ("hide weather"). When discussing weather patterns visible in the overlay, reference the colormap so users can interpret what they see.
-
 Data layers:
-The app supports toggleable vector overlays from Natural Earth. Available layers: country borders (yellow), coastlines (cyan), major rivers (blue). Users can say "show borders", "toggle coastlines", "hide rivers", "list layers", etc. More layers (satellite imagery, NASA GIBS, NOAA weather) can be added over time.`
+The app supports toggleable data overlays. Currently available: country borders (yellow), coastlines (cyan), major rivers (blue). Users can say "show borders", "toggle coastlines", "hide rivers", "list layers", etc. The layer system supports GeoJSON vectors, imagery tiles, and 3D tilesets. More layers and data sources are added as plugins.`
 }

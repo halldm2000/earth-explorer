@@ -7,7 +7,6 @@ import { registry } from './registry'
 import { registerProvider, removeProvider } from './router'
 import { coreCommands } from './core-commands'
 import { ClaudeProvider } from './providers/claude'
-import { initWeather } from '@/features/weather'
 import { initLayers } from '@/features/layers'
 
 let commandsRegistered = false
@@ -20,7 +19,6 @@ export function initAI(options?: { anthropicKey?: string | null }): void {
     commandsRegistered = true
 
     // Initialize feature modules
-    initWeather()
     initLayers()
   }
 
