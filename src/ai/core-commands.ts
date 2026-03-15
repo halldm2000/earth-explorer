@@ -741,10 +741,11 @@ const lookAt: CommandEntry = {
     const pitchRad = Math.atan2(heightDiff, distance) // positive when looking up, negative when looking down
     // Cesium pitch: 0 = horizontal, -PI/2 = straight down. atan2 gives us the right sign.
 
-    // Heading from camera toward target is opposite of the offset direction
-    const lookHeadingRad = Cesium.Math.toRadians((headingDeg + 180) % 360)
+    // Camera looks toward target: same heading value as input
+    // (heading 0 = camera south, look north = Cesium heading 0°)
+    const lookHeadingRad = headingRad
 
-    console.log(`[look-at] Camera at (${cameraLat.toFixed(5)}, ${cameraLon.toFixed(5)}, ${cameraHeight}m), target at (${targetLat}, ${targetLon}, ${targetHeight}m), heading ${((headingDeg + 180) % 360).toFixed(0)}°, pitch ${Cesium.Math.toDegrees(pitchRad).toFixed(1)}°, distance ${distance}m`)
+    console.log(`[look-at] Camera at (${cameraLat.toFixed(5)}, ${cameraLon.toFixed(5)}, ${cameraHeight}m), target at (${targetLat}, ${targetLon}, ${targetHeight}m), heading ${headingDeg.toFixed(0)}°, pitch ${Cesium.Math.toDegrees(pitchRad).toFixed(1)}°, distance ${distance}m`)
 
     await flyToAsync(viewer.camera, {
       destination: Cesium.Cartesian3.fromDegrees(cameraLon, cameraLat, cameraHeight),
