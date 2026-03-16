@@ -3,14 +3,15 @@
  * MCP Server for Earth Explorer.
  *
  * Runs as a standalone Node.js process. Communicates with AI clients via
- * MCP protocol (stdio or HTTP) and with the browser app via WebSocket.
+ * MCP protocol (stdio or HTTP) and connects to the Vite dev server's
+ * WebSocket broker to reach the browser app.
  *
  * Transports:
  *   --transport stdio   (default) For Claude Desktop / Claude Code
  *   --transport http    For any HTTP-capable AI client (OpenAI, custom agents, etc.)
  *
  * Usage:
- *   npx tsx src/mcp/server.ts [--transport stdio|http] [--port 3001] [--http-port 3002]
+ *   npx tsx src/mcp/server.ts [--transport stdio|http] [--broker-url ws://...]
  *
  * Claude Desktop config (~/.claude/claude_desktop_config.json):
  *   {
@@ -32,7 +33,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
-import { WebSocketServer, WebSocket } from 'ws'
+import { WebSocket } from 'ws'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -41,16 +42,15 @@ import type {
   McpToolDef,
   ServerToBrowserMessage,
   BrowserToServerMessage,
+  McpContentBlock,
 } from './protocol.js'
-import { DEFAULT_WS_PORT, WS_PATH } from './protocol.js'
+import { BROKER_SERVER_PATH, DEFAULT_BROKER_PORT } from './protocol.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 // ── State ──
 
-import type { McpContentBlock } from './protocol.js'
-
-let browserSocket: WebSocket | null = null
+let brokerSocket: WebSocket | null = null
 let currentTools: McpToolDef[] = []
 const pendingCalls = new Map<string, {
   resolve: (result: { content: string; blocks?: McpContentBlock[]; isError?: boolean }) => void
@@ -61,8 +61,10 @@ let callCounter = 0
 const TOOL_CALL_TIMEOUT_MS = 30_000
 const DEFAULT_HTTP_PORT = 3002
 const TOOLS_CACHE_PATH = join(__dirname, '..', '..', '.mcp-tools-cache.json')
+const RECONNECT_DELAY_MS = 2000
+const MAX_RECONNECT_DELAY_MS = 15_000
 
-// ── Tool cache (so tools are available on startup before browser connects) ──
+// ── Tool cache (so tools are available on startup before broker connects) ──
 
 function loadCachedTools(): McpToolDef[] {
   try {
@@ -92,72 +94,71 @@ function parseArgs() {
     const i = args.indexOf(flag)
     return i >= 0 ? args[i + 1] : undefined
   }
+  const brokerPort = parseInt(get('--broker-port') || String(DEFAULT_BROKER_PORT), 10)
+  const brokerUrl = get('--broker-url') || `ws://localhost:${brokerPort}${BROKER_SERVER_PATH}`
   return {
     transport: (get('--transport') || 'stdio') as 'stdio' | 'http',
-    wsPort: parseInt(get('--port') || String(DEFAULT_WS_PORT), 10),
+    brokerUrl,
     httpPort: parseInt(get('--http-port') || String(DEFAULT_HTTP_PORT), 10),
   }
 }
 
-// ── WebSocket server (browser connects here) ──
+// ── Broker connection (WebSocket client) ──
 
-function startWebSocketServer(port: number): WebSocketServer {
-  const wss = new WebSocketServer({ port, path: WS_PATH })
+let currentDelay = RECONNECT_DELAY_MS
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-  wss.on('error', (err: NodeJS.ErrnoException) => {
-    if (err.code === 'EADDRINUSE') {
-      log(`Port ${port} in use, retrying in 2s (another MCP server may be shutting down)`)
-      setTimeout(() => {
-        wss.close()
-        startWebSocketServer(port)
-      }, 2000)
-    } else {
-      log(`WebSocket server error: ${err.message}`)
+function connectToBroker(url: string): void {
+  try {
+    brokerSocket = new WebSocket(url)
+  } catch {
+    scheduleReconnect(url)
+    return
+  }
+
+  brokerSocket.on('open', () => {
+    log(`Connected to broker at ${url}`)
+    currentDelay = RECONNECT_DELAY_MS
+
+    // Request tool sync
+    sendBroker({ type: 'sync-request' })
+  })
+
+  brokerSocket.on('message', (data) => {
+    try {
+      const msg: BrowserToServerMessage = JSON.parse(data.toString())
+      handleBrokerMessage(msg)
+    } catch (err) {
+      log(`Failed to parse broker message: ${err}`)
     }
   })
 
-  wss.on('listening', () => {
-    log(`WebSocket server listening on ws://localhost:${port}${WS_PATH}`)
+  brokerSocket.on('close', () => {
+    log('Disconnected from broker')
+    brokerSocket = null
+    scheduleReconnect(url)
   })
 
-  wss.on('connection', (ws) => {
-    log('Browser connected')
-    browserSocket = ws
-
-    // Request initial tool sync
-    sendWs(ws, { type: 'sync-request' })
-
-    ws.on('message', (data) => {
-      try {
-        const msg: BrowserToServerMessage = JSON.parse(data.toString())
-        handleBrowserMessage(msg)
-      } catch (err) {
-        log(`Failed to parse browser message: ${err}`)
-      }
-    })
-
-    ws.on('close', () => {
-      log('Browser disconnected')
-      browserSocket = null
-      currentTools = []
-      // Reject any pending calls
-      for (const [id, pending] of pendingCalls) {
-        clearTimeout(pending.timer)
-        pending.resolve({ content: 'Browser disconnected', isError: true })
-        pendingCalls.delete(id)
-      }
-    })
+  brokerSocket.on('error', () => {
+    // 'close' fires after this
   })
-
-  return wss
 }
 
-function handleBrowserMessage(msg: BrowserToServerMessage): void {
+function scheduleReconnect(url: string): void {
+  if (reconnectTimer) return
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
+    connectToBroker(url)
+  }, currentDelay)
+  currentDelay = Math.min(currentDelay * 1.5, MAX_RECONNECT_DELAY_MS)
+}
+
+function handleBrokerMessage(msg: BrowserToServerMessage): void {
   switch (msg.type) {
     case 'sync-response':
     case 'tools-changed':
       currentTools = msg.tools
-      log(`Tools updated: ${currentTools.length} available (live from browser)`)
+      log(`Tools updated: ${currentTools.length} available`)
       saveCachedTools(currentTools)
       refreshMcpTools()
       break
@@ -181,9 +182,9 @@ function callBrowserTool(
   params: Record<string, unknown>,
 ): Promise<{ content: string; blocks?: McpContentBlock[]; isError?: boolean }> {
   return new Promise((resolve) => {
-    if (!browserSocket || browserSocket.readyState !== WebSocket.OPEN) {
+    if (!brokerSocket || brokerSocket.readyState !== WebSocket.OPEN) {
       resolve({
-        content: 'Earth Explorer is not connected. Open the app in your browser first.',
+        content: 'Earth Explorer is not connected. Make sure the dev server is running (pnpm dev).',
         isError: true,
       })
       return
@@ -197,7 +198,7 @@ function callBrowserTool(
 
     pendingCalls.set(callId, { resolve, timer })
 
-    sendWs(browserSocket, {
+    sendBroker({
       type: 'tool-call',
       callId,
       commandId,
@@ -288,7 +289,7 @@ mcpServer.resource(
     contents: [{
       uri: 'earth-explorer://status',
       text: JSON.stringify({
-        browserConnected: browserSocket?.readyState === WebSocket.OPEN,
+        brokerConnected: brokerSocket?.readyState === WebSocket.OPEN,
         toolCount: currentTools.length,
         tools: currentTools.map(t => t.name),
       }, null, 2),
@@ -308,13 +309,11 @@ async function startStdio(): Promise<void> {
 // ── Transport: HTTP (Streamable HTTP) ──
 
 async function startHttp(httpPort: number): Promise<void> {
-  // Map of session ID -> transport for stateful sessions
   const sessions = new Map<string, StreamableHTTPServerTransport>()
 
   const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url || '/', `http://localhost:${httpPort}`)
 
-    // CORS headers for browser-based AI clients
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, mcp-session-id')
@@ -326,39 +325,31 @@ async function startHttp(httpPort: number): Promise<void> {
       return
     }
 
-    // Health check endpoint
     if (url.pathname === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({
         status: 'ok',
-        browserConnected: browserSocket?.readyState === WebSocket.OPEN,
+        brokerConnected: brokerSocket?.readyState === WebSocket.OPEN,
         toolCount: currentTools.length,
       }))
       return
     }
 
-    // MCP endpoint
     if (url.pathname === '/mcp') {
-      // Check for existing session
       const sessionId = req.headers['mcp-session-id'] as string | undefined
 
       if (sessionId && sessions.has(sessionId)) {
-        // Existing session: route to its transport
         const transport = sessions.get(sessionId)!
         await transport.handleRequest(req, res)
         return
       }
 
       if (sessionId && !sessions.has(sessionId)) {
-        // Unknown session
         res.writeHead(404, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ error: 'Session not found' }))
         return
       }
 
-      // New session: create transport and connect a fresh McpServer
-      // Each HTTP session gets its own McpServer instance sharing the same
-      // browser bridge, because McpServer.connect() is single-transport.
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
       })
@@ -368,7 +359,6 @@ async function startHttp(httpPort: number): Promise<void> {
         version: '1.0.0',
       })
 
-      // Register the same tools and resources on this session server
       registerToolsOn(sessionServer)
       registerResourcesOn(sessionServer)
 
@@ -386,25 +376,18 @@ async function startHttp(httpPort: number): Promise<void> {
         sessions.set(sid, transport)
         log(`New HTTP session: ${sid}`)
       }
-
       return
     }
 
-    // 404 for everything else
     res.writeHead(404, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ error: 'Not found. Use /mcp for MCP protocol, /health for status.' }))
   })
 
   httpServer.listen(httpPort, () => {
     log(`HTTP MCP server listening on http://localhost:${httpPort}/mcp`)
-    log(`Health check: http://localhost:${httpPort}/health`)
   })
 }
 
-/**
- * Register tools on an McpServer instance. Used by HTTP mode to create
- * per-session servers that share the same browser bridge.
- */
 function registerToolsOn(server: McpServer): void {
   for (const tool of currentTools) {
     const shape: Record<string, z.ZodTypeAny> = {}
@@ -452,7 +435,7 @@ function registerResourcesOn(server: McpServer): void {
       contents: [{
         uri: 'earth-explorer://status',
         text: JSON.stringify({
-          browserConnected: browserSocket?.readyState === WebSocket.OPEN,
+          brokerConnected: brokerSocket?.readyState === WebSocket.OPEN,
           toolCount: currentTools.length,
           tools: currentTools.map(t => t.name),
         }, null, 2),
@@ -464,9 +447,9 @@ function registerResourcesOn(server: McpServer): void {
 
 // ── Helpers ──
 
-function sendWs(ws: WebSocket, msg: ServerToBrowserMessage): void {
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(msg))
+function sendBroker(msg: ServerToBrowserMessage): void {
+  if (brokerSocket && brokerSocket.readyState === WebSocket.OPEN) {
+    brokerSocket.send(JSON.stringify(msg))
   }
 }
 
@@ -479,16 +462,15 @@ function log(msg: string): void {
 async function main(): Promise<void> {
   const config = parseArgs()
 
-  // Load cached tools so they're available immediately when the MCP client
-  // sends its first tools/list request (before the browser connects).
+  // Load cached tools so they're available immediately
   const cached = loadCachedTools()
   if (cached.length > 0) {
     currentTools = cached
     refreshMcpTools()
   }
 
-  // Start WebSocket server for browser connection (both modes need this)
-  startWebSocketServer(config.wsPort)
+  // Connect to broker on the Vite dev server
+  connectToBroker(config.brokerUrl)
 
   // Start the chosen MCP transport
   if (config.transport === 'http') {

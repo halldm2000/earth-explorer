@@ -1,11 +1,15 @@
 /**
- * Shared protocol types for the WebSocket bridge between the MCP server
- * (Node.js, stdio transport) and the browser app (command registry + handlers).
+ * Shared protocol types for the MCP bridge.
  *
- * Flow: Claude Desktop <--stdio--> MCP Server <--WebSocket--> Browser App
+ * Architecture:
+ *   AI Client <--stdio/HTTP--> MCP Server <--WS client--> Broker (Vite dev server) <--WS client--> Browser
+ *
+ * The broker runs as a Vite plugin on the dev server. Both MCP server processes
+ * and the browser connect to it as WebSocket clients. The broker routes messages
+ * between them, enabling multiple AI clients to share one browser session.
  */
 
-// ── Messages from MCP server → browser ──
+// ── Messages from MCP server → browser (routed through broker) ──
 
 export interface SyncRequestMessage {
   type: 'sync-request'
@@ -23,7 +27,7 @@ export interface ToolCallMessage {
 
 export type ServerToBrowserMessage = SyncRequestMessage | ToolCallMessage
 
-// ── Messages from browser → MCP server ──
+// ── Messages from browser → MCP server (routed through broker) ──
 
 export interface SyncResponseMessage {
   type: 'sync-response'
@@ -83,5 +87,9 @@ export interface McpToolDef {
 
 // ── Constants ──
 
-export const DEFAULT_WS_PORT = 3100
-export const WS_PATH = '/mcp-bridge'
+/** Broker WebSocket paths (on the Vite dev server) */
+export const BROKER_BROWSER_PATH = '/mcp-bridge/browser'
+export const BROKER_SERVER_PATH = '/mcp-bridge/server'
+
+/** Default Vite dev server port */
+export const DEFAULT_BROKER_PORT = 5173

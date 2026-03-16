@@ -1,9 +1,9 @@
 /**
  * Browser-side MCP bridge.
  *
- * Connects to the MCP server's WebSocket endpoint, syncs the command
- * registry as MCP tool definitions, and executes tool calls when the
- * MCP server forwards them from Claude Desktop (or any MCP client).
+ * Connects to the broker's WebSocket endpoint on the Vite dev server,
+ * syncs the command registry as MCP tool definitions, and executes tool
+ * calls when MCP server processes forward them from AI clients.
  *
  * Runs inside the React app (browser context). Imported and started
  * from the AI init module.
@@ -17,21 +17,20 @@ import type {
   ServerToBrowserMessage,
   BrowserToServerMessage,
 } from './protocol'
-import { DEFAULT_WS_PORT, WS_PATH } from './protocol'
+import { BROKER_BROWSER_PATH } from './protocol'
 
 let socket: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let unsubscribeRegistry: (() => void) | null = null
 
-const RECONNECT_DELAY_MS = 3000
-const MAX_RECONNECT_DELAY_MS = 30_000
+const RECONNECT_DELAY_MS = 2000
+const MAX_RECONNECT_DELAY_MS = 15_000
 let currentDelay = RECONNECT_DELAY_MS
 
 // ── Public API ──
 
-export function startMcpBridge(port?: number): void {
-  const wsPort = port ?? DEFAULT_WS_PORT
-  connect(wsPort)
+export function startMcpBridge(): void {
+  connect()
 
   // Watch for registry changes and push updates
   unsubscribeRegistry = registry.subscribe(() => {
@@ -62,18 +61,19 @@ export function isMcpConnected(): boolean {
 
 // ── Connection management ──
 
-function connect(port: number): void {
-  const url = `ws://localhost:${port}${WS_PATH}`
+function connect(): void {
+  // Connect to the broker on the same host/port as the Vite dev server
+  const url = `ws://${window.location.host}${BROKER_BROWSER_PATH}`
 
   try {
     socket = new WebSocket(url)
   } catch {
-    scheduleReconnect(port)
+    scheduleReconnect()
     return
   }
 
   socket.onopen = () => {
-    console.log('[MCP Bridge] Connected to MCP server')
+    console.log('[MCP Bridge] Connected to broker')
     currentDelay = RECONNECT_DELAY_MS
   }
 
@@ -87,9 +87,9 @@ function connect(port: number): void {
   }
 
   socket.onclose = () => {
-    console.log('[MCP Bridge] Disconnected from MCP server')
+    console.log('[MCP Bridge] Disconnected from broker')
     socket = null
-    scheduleReconnect(port)
+    scheduleReconnect()
   }
 
   socket.onerror = () => {
@@ -97,11 +97,11 @@ function connect(port: number): void {
   }
 }
 
-function scheduleReconnect(port: number): void {
+function scheduleReconnect(): void {
   if (reconnectTimer) return
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null
-    connect(port)
+    connect()
   }, currentDelay)
   // Exponential backoff, capped
   currentDelay = Math.min(currentDelay * 1.5, MAX_RECONNECT_DELAY_MS)
@@ -176,11 +176,6 @@ async function executeToolCall(
 
 // ── Tool definition generation ──
 
-/**
- * Build MCP tool definitions from the command registry.
- * Mirrors the logic in router.ts buildToolDefs(), but includes
- * the original commandId for reverse mapping.
- */
 function buildToolDefs(): McpToolDef[] {
   return registry.getAll()
     .filter(cmd => !cmd.aiHidden)
@@ -202,7 +197,6 @@ function commandToToolDef(cmd: CommandEntry): McpToolDef {
   }
 
   return {
-    // Replace colons with underscores for MCP compatibility (same as router.ts)
     name: cmd.id.replace(/:/g, '_'),
     description: cmd.description,
     parameters: {

@@ -1,12 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import cesium from 'vite-plugin-cesium'
+import { mcpBrokerPlugin } from './src/mcp/vite-plugin-mcp-broker'
 import path from 'path'
 
 export default defineConfig({
   plugins: [
     react(),
     cesium(),
+    mcpBrokerPlugin(),
   ],
   resolve: {
     alias: {

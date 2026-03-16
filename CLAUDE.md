@@ -47,6 +47,17 @@ Features register via `shared/registry.ts`. Adding a feature never requires edit
 
 Never commit `.env`. The app shows an onboarding screen if tokens are missing.
 
+## MCP Integration (Important for AI Agents)
+
+This project has an MCP server that lets AI assistants control the 3D globe. If you have `earth-explorer` MCP tools available, **just use them**. That's it.
+
+- **Do NOT start the dev server.** The user manages it. If tools return "not connected", ask the user to run `pnpm dev` in the project directory.
+- **Do NOT use worktrees.** The MCP server must run from the main project directory.
+- **Do NOT use preview tools or launch browsers.** The MCP screenshot tool captures the globe directly.
+- **Do NOT install dependencies.** The user's machine has everything set up.
+
+The MCP tools handle navigation, screenshots, layer toggling, queries, and more. The connection from your MCP server to the browser is automatic via a WebSocket broker on the Vite dev server.
+
 ## Development Conventions
 
 - **Dark mode is the default.** Light mode is the variant.
