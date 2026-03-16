@@ -813,10 +813,71 @@ const orbit: CommandEntry = {
   },
 }
 
+// --- Agent message board ---
+
+interface AgentMessage {
+  from: string
+  text: string
+  timestamp: number
+}
+
+const messageBoard: AgentMessage[] = []
+const MAX_MESSAGES = 100
+
+const postMessage: CommandEntry = {
+  id: 'core:post-message',
+  name: 'Post message',
+  module: 'core',
+  category: 'system',
+  description: 'Post a message to the shared agent message board. Use this to communicate with other AI agents connected to the same session. Include a "from" name to identify yourself.',
+  patterns: ['post message', 'send message'],
+  params: [
+    { name: 'from', type: 'string', required: true, description: 'Your identifier (e.g. "claude-code", "claude-desktop")' },
+    { name: 'text', type: 'string', required: true, description: 'Message text' },
+  ],
+  handler: async (params) => {
+    const from = String(params.from || 'unknown')
+    const text = String(params.text || '')
+    if (!text) return 'Empty message'
+    messageBoard.push({ from, text, timestamp: Date.now() })
+    if (messageBoard.length > MAX_MESSAGES) messageBoard.shift()
+    return `Message posted by ${from} (${messageBoard.length} total)`
+  },
+}
+
+const readMessages: CommandEntry = {
+  id: 'core:read-messages',
+  name: 'Read messages',
+  module: 'core',
+  category: 'system',
+  description: 'Read recent messages from the shared agent message board. Returns the last N messages (default 10). Use this to see what other AI agents have communicated.',
+  patterns: ['read messages', 'check messages'],
+  params: [
+    { name: 'count', type: 'number', required: false, description: 'Number of recent messages to return (default 10)' },
+    { name: 'since', type: 'number', required: false, description: 'Only return messages after this timestamp (milliseconds)' },
+  ],
+  handler: async (params) => {
+    const count = typeof params.count === 'number' ? params.count : 10
+    const since = typeof params.since === 'number' ? params.since : 0
+
+    let msgs = messageBoard
+    if (since > 0) msgs = msgs.filter(m => m.timestamp > since)
+    msgs = msgs.slice(-count)
+
+    if (msgs.length === 0) return 'No messages'
+
+    return msgs.map(m => {
+      const time = new Date(m.timestamp).toLocaleTimeString()
+      return `[${time}] ${m.from}: ${m.text}`
+    }).join('\n')
+  },
+}
+
 /** All core commands */
 export const coreCommands: CommandEntry[] = [
   goTo, resetView, zoomIn, zoomOut, zoomTo, faceDirection, lookAt, orbit,
   toggleBuildings, toggleTerrain, toggleLighting, setTimeOfDay,
   baseMap, listBaseMaps,
   muteToggle, whatCanYouDo, fullscreen, setProvider, setCesiumToken,
+  postMessage, readMessages,
 ]
