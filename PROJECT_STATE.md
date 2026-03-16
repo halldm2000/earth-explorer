@@ -2,12 +2,16 @@
 
 ## Current Status
 
-Core runtime ~80% complete. MCP server fully implemented with dual transport support (stdio for Claude Desktop/Code, HTTP for other AI environments). Browser-side bridge wired into app startup. CesiumJS 1.139, React 18, Zustand, Vite, pnpm.
+Core runtime ~85% complete. MCP server fully operational with dual transport (stdio + HTTP). Navigation commands battle-tested via Claude Code voice sessions. Google Photorealistic 3D Tiles with altitude auto-switching. CesiumJS 1.139, React 18, Zustand, Vite, pnpm.
 
 ## Recent Changes
 
 | Date | Change | Files |
 |------|--------|-------|
+| 2026-03-16 | Add orbit command with auto-cancel on user input | src/scene/engine.ts, src/ai/core-commands.ts |
+| 2026-03-16 | Fix look-at heading (was 180° inverted) | src/ai/core-commands.ts |
+| 2026-03-16 | Fix zoom-to to use AGL instead of ellipsoid height | src/ai/core-commands.ts |
+| 2026-03-16 | Generalize face-north → face with heading support | src/ai/core-commands.ts |
 | 2026-03-15 | MCP server: dual transport (stdio + HTTP/SSE) | src/mcp/server.ts |
 | 2026-03-15 | Wire MCP bridge into app initialization | src/ai/init.ts |
 | 2026-03-15 | Fix Cesium 1.139 CameraFlyToOptions type | src/ai/core-commands.ts |
@@ -34,7 +38,7 @@ Tools are dynamically registered from the browser's command registry. When plugi
 
 ## Known Issues
 
-- End-to-end MCP test pending (needs browser app running + Claude Code session restart)
+- MCP tool schema caching: new/changed tool params require MCP server restart to take effect
 - Prototype single-file HTML (CLAUDE-COWORK/earth-explorer.html) has features not yet ported to modular structure
 - vite-plugin-cesium peer dep warning (wants rollup ^2.25, project uses rollup 4)
 
@@ -44,6 +48,6 @@ CesiumJS as the 3D engine, React for UI shell, Zustand for state. Features (floo
 
 ## Next Steps
 
-1. End-to-end test: start dev server, open browser, restart Claude Code, verify tool discovery and execution
-2. Phase 2: Visualization toolkit (colormaps, grid renderer, legends, time slider)
-3. Phase 3: Reference plugins (earthquake monitor, NASA GIBS)
+1. Phase 2: Visualization toolkit (colormaps, grid renderer, legends, time slider)
+2. Phase 3: Reference plugins (earthquake monitor, NASA GIBS)
+3. Fix MCP tool re-registration so schema changes don't require server restart
