@@ -58,6 +58,17 @@ This project has an MCP server that lets AI assistants control the 3D globe. If 
 
 The MCP tools handle navigation, screenshots, layer toggling, queries, and more. The connection from your MCP server to the browser is automatic via a WebSocket broker on the Vite dev server.
 
+## Dropbox + Git
+
+This project lives in a Dropbox-synced folder. To prevent Dropbox from corrupting `.git` internals (loose objects, refs), the `.git` and `node_modules` directories are excluded from Dropbox sync via the `com.dropbox.ignored` alternate data stream:
+
+```powershell
+Set-Content -Path '.git' -Stream com.dropbox.ignored -Value 1
+Set-Content -Path 'node_modules' -Stream com.dropbox.ignored -Value 1
+```
+
+**On a new machine:** clone from GitHub independently (`git clone`), run `npm install`, and set the ignore flags above. Source files sync via Dropbox; git history syncs via GitHub push/pull.
+
 ## Development Conventions
 
 - **Dark mode is the default.** Light mode is the variant.
