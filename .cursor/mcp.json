@@ -2,7 +2,10 @@
   "mcpServers": {
     "worldscope": {
       "command": "npx",
-      "args": ["tsx", "src/mcp/server.ts"]
+      "args": [
+        "tsx",
+        "src/mcp/server.ts"
+      ]
     }
   }
 }

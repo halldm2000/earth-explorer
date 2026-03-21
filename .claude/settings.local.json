@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__worldscope__*",
+      "Skill(update-config)",
+      "Bash(claude config:*)",
+      "Bash(xargs grep:*)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(grep -E \"\\\\.\\(css|scss\\)$\")",
+      "Read(//c/Users/halld/Dropbox/WORK_NVIDIA/NV_PROJECTS/**)",
+      "Bash(rsync -av --exclude='.git' --exclude='node_modules' --exclude='.claude' --exclude='package-lock.json' --exclude='dist' worldscope/ worldscope-fresh/)",
+      "Bash(cp -r worldscope/src worldscope-fresh/src)",
+      "Bash(cp -r worldscope/public worldscope-fresh/public)",
+      "Bash(cp worldscope/package.json worldscope-fresh/package.json)",
+      "Bash(cp worldscope/.mcp.json worldscope-fresh/.mcp.json)",
+      "Bash(cp worldscope/CLAUDE.md worldscope-fresh/CLAUDE.md)",
+      "Bash(cd:*)",
+      "Bash(mv .git .git-corrupted)",
+      "Bash(mv ../worldscope-fresh/.git .git)",
+      "Bash(rm -rf ../worldscope-fresh)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "worldscope"
+  ]
+}

@@ -194,6 +194,84 @@ const queryPoint: CommandEntry = {
   },
 }
 
+// --- Console log capture ---
+
+/** Ring buffer of recent console errors/warnings for debugging via MCP. */
+const _consoleLogs: { level: string; msg: string; ts: number }[] = []
+const MAX_CONSOLE_LOGS = 100
+
+/** Install console interceptors. Call once at init. */
+export function installConsoleCapture(): void {
+  const orig = {
+    error: console.error.bind(console),
+    warn: console.warn.bind(console),
+  }
+
+  console.error = (...args: unknown[]) => {
+    pushLog('error', args)
+    orig.error(...args)
+  }
+  console.warn = (...args: unknown[]) => {
+    pushLog('warn', args)
+    orig.warn(...args)
+  }
+
+  // Also capture uncaught errors
+  window.addEventListener('error', (e) => {
+    pushLog('error', [`Uncaught: ${e.message} at ${e.filename}:${e.lineno}`])
+  })
+  window.addEventListener('unhandledrejection', (e) => {
+    pushLog('error', [`Unhandled rejection: ${e.reason}`])
+  })
+}
+
+function pushLog(level: string, args: unknown[]): void {
+  const msg = args.map(a => {
+    if (a instanceof Error) return `${a.name}: ${a.message}`
+    if (typeof a === 'string') return a
+    try { return JSON.stringify(a) } catch { return String(a) }
+  }).join(' ')
+  _consoleLogs.push({ level, msg, ts: Date.now() })
+  if (_consoleLogs.length > MAX_CONSOLE_LOGS) _consoleLogs.shift()
+}
+
+const queryConsole: CommandEntry = {
+  id: 'query:console',
+  name: 'Read console',
+  module: 'query',
+  category: 'system',
+  description: 'Read recent console errors and warnings from the browser. Useful for debugging 404 errors, runtime exceptions, and other issues without needing screenshots. Returns the last N log entries (default 20).',
+  patterns: ['console errors', 'show errors', 'any errors', 'debug console'],
+  params: [
+    { name: 'count', type: 'number', required: false, description: 'Number of recent entries to return (default 20, max 100)' },
+    { name: 'level', type: 'enum', required: false, description: 'Filter by log level', options: ['error', 'warn', 'all'] },
+  ],
+  aiHidden: false,
+  chatOnly: true,
+  handler: (params) => {
+    const count = Math.min(Number(params.count) || 20, MAX_CONSOLE_LOGS)
+    const levelFilter = String(params.level ?? 'all').toLowerCase()
+
+    let logs = _consoleLogs
+    if (levelFilter !== 'all') {
+      logs = logs.filter(l => l.level === levelFilter)
+    }
+
+    const recent = logs.slice(-count)
+    if (recent.length === 0) {
+      return `No console ${levelFilter === 'all' ? 'errors or warnings' : levelFilter + 's'} captured.`
+    }
+
+    const lines = recent.map(l => {
+      const age = Math.round((Date.now() - l.ts) / 1000)
+      const ageStr = age < 60 ? `${age}s ago` : `${Math.round(age / 60)}m ago`
+      return `[${l.level.toUpperCase()}] (${ageStr}) ${l.msg.slice(0, 300)}`
+    })
+
+    return `**Console** (${recent.length} entries, ${_consoleLogs.length} total captured)\n\n${lines.join('\n')}`
+  },
+}
+
 // --- Helpers ---
 
 function compassDirection(heading: number): string {
@@ -209,4 +287,5 @@ export const queryCommands: CommandEntry[] = [
   queryScene,
   queryScreenshot,
   queryPoint,
+  queryConsole,
 ]

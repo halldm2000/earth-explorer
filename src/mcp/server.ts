@@ -197,12 +197,73 @@ function callBrowserTool(
   })
 }
 
+// ── MCP server instructions ──
+//
+// Sent to AI clients during the initialize handshake. This is the primary
+// discoverability mechanism — it tells Cursor, Claude, ChatGPT, etc. how
+// to use the tools without needing to inspect individual schemas.
+
+const MCP_INSTRUCTIONS = `\
+Worldscope is an interactive 3D globe for visualizing Earth data. You control it via these MCP tools.
+
+## Quick Start
+1. Navigate: core_go-to (fly to a place by name), core_zoom-to (set altitude in km)
+2. Screenshot: query_screenshot (capture what's on the globe — you can see images)
+3. Apps: earthquake_show, hurricane_show, satellite_show, flights_show
+
+## Tool Categories
+
+**Navigation** (core_*):
+- core_go-to {place} — Fly to a named location (city, country, landmark)
+- core_zoom-to {altitude} — Set camera altitude in km
+- core_look-at {lat, lon} — Point camera at coordinates
+- core_orbit — Start/stop orbiting animation
+- core_reset-view — Reset to default view
+
+**Apps** — Each has show/hide/query commands:
+- earthquake_show — Recent earthquakes worldwide (USGS, animated seismic rings)
+- hurricane_show — Active tropical cyclones globally (GDACS, animated tracks)
+- satellite_show — Real-time satellite orbits (CelesTrak, animated orbital tracks)
+- satellite_track {name} — Track a specific satellite (e.g. "ISS", "Hubble")
+- satellite_follow {name} — Lock camera above a satellite and follow it (stops on user navigation)
+- satellite_isolate — Toggle showing only the tracked satellite's orbit
+- flights_show — Live aircraft positions worldwide (OpenSky, altitude-colored)
+
+**Data Layers** (gibs_*, gibs-catalog_*, layers_*):
+- gibs_toggle {layer} — Toggle satellite imagery: "satellite", "night lights", "sst", "clouds"
+- gibs-catalog_search {query} — Search 1,100+ NASA satellite products
+- gibs-catalog_add {id} — Add any product to the globe
+- layers_list — Show all active layers
+- layers_set-opacity {layer, value} — Adjust layer transparency
+
+**Queries** (query_*):
+- query_screenshot — Capture the current view (returns image)
+- query_camera — Get camera position (lat, lon, altitude)
+- query_console — Read browser console errors (debugging)
+
+**Time** (core_set-time, core_playback):
+- core_set-time {date} — Change date for temporal layers (YYYY-MM-DD)
+- core_playback {action} — Animate through time (play/pause, speed: 0.5x/1x/2x/4x)
+
+**View** (core_*):
+- core_base-map {style} — Switch map: satellite, dark, light, road, topo
+- core_toggle-terrain — Toggle 3D terrain
+- core_toggle-buildings — Toggle 3D buildings
+- core_toggle-lighting — Toggle day/night shading
+
+## Tips
+- Use query_screenshot after making changes to see the result.
+- Layer names for toggling: use layers_list to see exact IDs.
+- For NASA data, search the catalog first (gibs-catalog_search), then add by product ID.
+- The globe must be open in a browser (pnpm dev). If tools return errors, ask the user to start the dev server.
+`
+
 // ── MCP server ──
 
-const mcpServer = new McpServer({
-  name: 'worldscope',
-  version: '1.0.0',
-})
+const mcpServer = new McpServer(
+  { name: 'worldscope', version: '1.0.0' },
+  { instructions: MCP_INSTRUCTIONS },
+)
 
 // Track registered tool names to avoid duplicates (SDK has no unregister)
 const registeredToolNames = new Set<string>()
@@ -372,10 +433,10 @@ async function startHttp(httpPort: number): Promise<void> {
         sessionIdGenerator: () => randomUUID(),
       })
 
-      const sessionServer = new McpServer({
-        name: 'worldscope',
-        version: '1.0.0',
-      })
+      const sessionServer = new McpServer(
+        { name: 'worldscope', version: '1.0.0' },
+        { instructions: MCP_INSTRUCTIONS },
+      )
 
       registerToolsOn(sessionServer)
       registerResourcesOn(sessionServer)

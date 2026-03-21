@@ -2,8 +2,11 @@
   "mcpServers": {
     "worldscope": {
       "command": "npx",
-      "args": ["tsx", "src/mcp/server.ts"],
-      "cwd": "/Users/dhall/Dropbox/WORK_NVIDIA/NV_PROJECTS/worldscope"
+      "args": [
+        "tsx",
+        "src/mcp/server.ts"
+      ],
+      "cwd": "C:/Users/halld/Dropbox/WORK_NVIDIA/NV_PROJECTS/worldscope"
     }
   }
 }

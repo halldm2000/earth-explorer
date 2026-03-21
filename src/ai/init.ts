@@ -6,14 +6,26 @@
 import { registry } from './registry'
 import { registerProvider, removeProvider } from './router'
 import { coreCommands } from './core-commands'
-import { queryCommands } from './query-commands'
+import { queryCommands, installConsoleCapture } from './query-commands'
 import { ClaudeProvider } from './providers/claude'
 import { OpenAIProvider, createOpenAIProvider, createOllamaProvider, createOpenRouterProvider } from './providers/openai'
 import { initLayers } from '@/features/layers'
 import { startMcpBridge } from '@/mcp'
 import { registerApp, activateAutoApps } from '@/apps/manager'
+import { registerDataPack } from '@/packs/register'
+import { boundariesPack } from '@/packs/boundaries'
+import { gibsPack } from '@/packs/gibs'
+import { gibsExtraPack } from '@/packs/gibs-extra'
+// FIRMS fire pack removed: GIBS migrated Thermal Anomalies to MVT (vector tiles only, no PNG).
+// TODO: re-add as GeoJSON source via FIRMS API when vector source support is added.
+import { openseamapPack } from '@/packs/openseamap'
+import { labelsPack } from '@/packs/labels'
 import { earthquakeApp } from '@/features/earthquake'
-import gibsApp from '@/features/gibs'
+import { hurricaneApp } from '@/features/hurricane'
+import { satelliteApp } from '@/features/satellite'
+import { flightsApp } from '@/features/flights'
+import { shipsApp } from '@/features/ships'
+import { gibsCatalogCommands } from '@/data/gibs-catalog-commands'
 
 let commandsRegistered = false
 
@@ -24,16 +36,39 @@ export function initAI(options?: { anthropicKey?: string | null }): void {
     registry.registerAll(queryCommands)
     commandsRegistered = true
 
-    // Initialize feature modules
+    // Initialize layer system (generic commands: toggle, list, hide-all)
     initLayers()
 
-    // Register and activate apps
+    // Register data packs (lightweight layer + command bundles, no lifecycle)
+    registerDataPack(boundariesPack)
+    registerDataPack(gibsPack)
+    registerDataPack(gibsExtraPack)
+    registerDataPack(openseamapPack)
+    registerDataPack(labelsPack)
+
+    // Register GIBS catalog commands (search/add/remove from 1,100+ products)
+    registry.registerAll(gibsCatalogCommands)
+
+    // Register and activate apps (full lifecycle)
     registerApp(earthquakeApp)
-    registerApp(gibsApp)
+    registerApp(hurricaneApp)
+    registerApp(satelliteApp)
+    registerApp(flightsApp)
+    registerApp(shipsApp)
     activateAutoApps()
+
+    // Install console error/warning capture for MCP debugging
+    if (typeof window !== 'undefined') {
+      installConsoleCapture()
+    }
 
     // Start MCP bridge (connects to MCP server if running)
     startMcpBridge()
+
+    // Expose registry for console access (debugging, testing)
+    if (typeof window !== 'undefined') {
+      ;(window as any).__registry = registry
+    }
   }
 
   // Auto-add provider from env / stored key

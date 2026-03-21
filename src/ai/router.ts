@@ -113,10 +113,11 @@ export async function route(input: string, history?: ChatMessage[]): Promise<Rou
       } else if (command) {
         try {
           const result = await command.handler(classified.params)
-          // Check for text output (e.g. help, list)
-          const output = (command as any)._lastOutput as string | undefined
+          // Use handler return value or _lastOutput as response text
+          const output = (typeof result === 'string' ? result : null)
+            || (command as any)._lastOutput as string | undefined
+          if ((command as any)._lastOutput) delete (command as any)._lastOutput
           if (output) {
-            delete (command as any)._lastOutput
             return {
               tier: 'ai-classify',
               command,
@@ -148,15 +149,17 @@ export async function route(input: string, history?: ChatMessage[]): Promise<Rou
   const patternMatch = matchPattern(trimmed, registry.getAll())
   if (patternMatch && patternMatch.score >= 0.85) {
     console.log(`[router] Offline fallback match: ${patternMatch.command.id} (score: ${patternMatch.score.toFixed(3)})`)
+    let result: unknown
     try {
-      await patternMatch.command.handler(patternMatch.params)
+      result = await patternMatch.command.handler(patternMatch.params)
     } catch (err) {
       console.error('[router] Command handler error:', err)
     }
 
-    const output = (patternMatch.command as any)._lastOutput as string | undefined
+    const output = (typeof result === 'string' ? result : null)
+      || (patternMatch.command as any)._lastOutput as string | undefined
+    if ((patternMatch.command as any)._lastOutput) delete (patternMatch.command as any)._lastOutput
     if (output) {
-      delete (patternMatch.command as any)._lastOutput
       return {
         tier: 'pattern',
         command: patternMatch.command,

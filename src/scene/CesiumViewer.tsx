@@ -1,17 +1,44 @@
 import { useEffect, useRef, useState } from 'react'
 import * as Cesium from 'cesium'
 import { useStore } from '@/store'
-import { setViewer, setBuildingTilesets, updateBuildingMode } from './engine'
+import { getViewer, setViewer, setBuildingTilesets, updateBuildingMode, applyQualityPreset } from './engine'
 import { playRumble } from '@/audio/sounds'
 
-const MAX_ALTITUDE = 12_000_000 // 12,000 km
-const HOME = { lon: 10, lat: 30, height: MAX_ALTITUDE, heading: 0, pitch: -90 }
+const MAX_ALTITUDE = 40_000_000 // 40,000 km — enough to see full globe in any aspect ratio
+const HOME = { lon: 10, lat: 30, height: 20_000_000, heading: 0, pitch: -90 }
+
+// ── Scene toggle state (exported for Toolbar) ──
+let _lighting = true
+let _atmosphere = true
+const _sceneListeners = new Set<() => void>()
+function notifyScene() { for (const fn of _sceneListeners) fn() }
+export function getSceneToggles() { return { lighting: _lighting, atmosphere: _atmosphere } }
+export function subscribeScene(fn: () => void): () => void {
+  _sceneListeners.add(fn)
+  return () => _sceneListeners.delete(fn)
+}
+export function toggleSceneLighting(): void {
+  const viewer = getViewer()
+  if (!viewer) return
+  const on = !viewer.scene.globe.enableLighting
+  viewer.scene.globe.enableLighting = on
+  _lighting = on; notifyScene()
+}
+export function toggleSceneAtmosphere(): void {
+  const viewer = getViewer()
+  if (!viewer) return
+  const scene = viewer.scene
+  const on = !scene.fog.enabled
+  scene.fog.enabled = on
+  scene.globe.showGroundAtmosphere = on
+  if (scene.skyAtmosphere) scene.skyAtmosphere.show = on
+  _atmosphere = on; notifyScene()
+}
 
 export function CesiumViewer() {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<Cesium.Viewer | null>(null)
   const cesiumToken = useStore(s => s.cesiumToken)
-  const [status, setStatus] = useState({ lat: 0, lon: 0, alt: 0, heading: 0 })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -41,10 +68,11 @@ export function CesiumViewer() {
       viewerRef.current = viewer
       setViewer(viewer)
 
-      // Terrain
+      // Terrain — standard Cesium World Terrain (asset 1)
+      // NOTE: Bathymetry (asset 2426648) also available if added to Ion account from Asset Depot
       try {
         viewer.scene.terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(1)
-      } catch (e) { console.warn('Terrain failed:', e) }
+      } catch (e) { console.warn('Terrain init failed:', e) }
       if (disposed) return
 
       // Load both building tilesets; OSM visible by default, photorealistic available via command
@@ -78,6 +106,10 @@ export function CesiumViewer() {
       scene.globe.baseColor = Cesium.Color.fromCssColorString('#0a0c12')
       scene.globe.depthTestAgainstTerrain = true
 
+      // Apply quality preset (shadows, bloom, AO, FXAA, resolution scale)
+      const initialPreset = useStore.getState().qualityPreset
+      applyQualityPreset(initialPreset)
+
       // Time
       viewer.clock.currentTime = Cesium.JulianDate.fromDate(new Date())
       viewer.clock.shouldAnimate = true
@@ -110,13 +142,6 @@ export function CesiumViewer() {
           }
           // Auto-switch building tilesets based on altitude
           updateBuildingMode(c.height)
-
-          setStatus({
-            lat: Cesium.Math.toDegrees(c.latitude),
-            lon: Cesium.Math.toDegrees(c.longitude),
-            alt: c.height,
-            heading: Cesium.Math.toDegrees(viewer.camera.heading),
-          })
         }
       })
 
@@ -141,12 +166,6 @@ export function CesiumViewer() {
     }
   }, [cesiumToken])
 
-  const altStr = status.alt > 100_000
-    ? (status.alt / 1000).toFixed(0) + ' km'
-    : status.alt > 1000
-      ? (status.alt / 1000).toFixed(1) + ' km'
-      : status.alt.toFixed(0) + ' m'
-
   return (
     <>
       <div ref={containerRef} style={{ position: 'fixed', inset: 0 }} />
@@ -168,36 +187,7 @@ export function CesiumViewer() {
           </div>
         </div>
       )}
-
-      {!loading && (
-        <div style={{
-          position: 'fixed', bottom: 16, left: 16, zIndex: 10,
-          padding: '8px 14px',
-          background: 'var(--bg-panel)', backdropFilter: 'blur(var(--blur))',
-          border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-          fontFamily: 'var(--mono, monospace)', fontSize: 12,
-          color: 'var(--text-secondary)',
-          display: 'flex', gap: 20,
-          pointerEvents: 'none',
-        }}>
-          <span><Label>Lat</Label> {status.lat.toFixed(4)}°</span>
-          <span><Label>Lon</Label> {status.lon.toFixed(4)}°</span>
-          <span><Label>Alt</Label> {altStr}</span>
-          <span><Label>Hdg</Label> {status.heading.toFixed(0)}°</span>
-        </div>
-      )}
     </>
-  )
-}
-
-function Label({ children }: { children: string }) {
-  return (
-    <span style={{
-      fontSize: 10, fontWeight: 500, textTransform: 'uppercase',
-      letterSpacing: '0.06em', color: 'var(--text-muted)', marginRight: 4,
-    }}>
-      {children}
-    </span>
   )
 }
 

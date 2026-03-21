@@ -59,17 +59,18 @@ const goTo: CommandEntry = {
     playRumble()
 
     try {
-      // Check for raw coordinates like "10, 52" or "10.5 52.3"
+      // Check for raw coordinates like "19.84, -74.36" or "19.84 -74.36"
+      // Convention: lat, lon (geographic standard — latitude first)
       const coordMatch = place.match(/^(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)(?:[,\s]+(-?\d+\.?\d*))?$/)
       if (coordMatch) {
-        const lon = parseFloat(coordMatch[1])
-        const lat = parseFloat(coordMatch[2])
+        const lat = parseFloat(coordMatch[1])
+        const lon = parseFloat(coordMatch[2])
         const alt = coordMatch[3] ? parseFloat(coordMatch[3]) : 50_000
         await flyToAsync(viewer.camera, {
           destination: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
           duration: 2.0,
         })
-        return `Flying to coordinates (${lon}, ${lat})`
+        return `Flying to coordinates (${lat}, ${lon})`
       }
 
       // Named location lookup (common cities, will be extended)
@@ -765,7 +766,7 @@ const baseMap: CommandEntry = {
   name: 'Change base map',
   module: 'core',
   category: 'view',
-  description: 'Switch base map style (default, satellite, dark, light, road)',
+  description: 'Switch base map style (default, satellite, dark, light, road, voyager, topo, blank-black, blank-white)',
   patterns: [
     'base map {style}',
     'map style {style}',
@@ -778,6 +779,18 @@ const baseMap: CommandEntry = {
     'political map',
     'normal map',
     'reset map',
+    'black map',
+    'white map',
+    'blank map',
+    'blank black',
+    'blank white',
+    'black base',
+    'white base',
+    'voyager map',
+    'voyager',
+    'topo map',
+    'topographic map',
+    'topographic',
   ],
   params: [
     {
@@ -785,7 +798,7 @@ const baseMap: CommandEntry = {
       type: 'enum',
       required: true,
       description: 'Map style',
-      options: ['default', 'satellite', 'dark', 'light', 'road'],
+      options: ['default', 'satellite', 'dark', 'light', 'road', 'voyager', 'topo', 'blank-black', 'blank-white'],
     },
   ],
   handler: async (params) => {
@@ -794,16 +807,23 @@ const baseMap: CommandEntry = {
 
     // Handle exact-match patterns (no {style} param extracted)
     if (!style || style === 'undefined') {
-      if (raw.includes('dark')) style = 'dark'
+      if (raw.includes('blank') && raw.includes('white') || raw.includes('white base') || raw.includes('white map')) style = 'blank-white'
+      else if (raw.includes('blank') || raw.includes('black')) style = 'blank-black'
+      else if (raw.includes('dark')) style = 'dark'
       else if (raw.includes('light') || raw.includes('political')) style = 'light'
       else if (raw.includes('satellite')) style = 'satellite'
       else if (raw.includes('road')) style = 'road'
+      else if (raw.includes('voyager')) style = 'voyager'
+      else if (raw.includes('topo')) style = 'topo'
       else if (raw.includes('default') || raw.includes('normal') || raw.includes('reset')) style = 'default'
       else style = 'default'
     }
 
     // Normalize aliases
     if (style === 'political' || style === 'terrain') style = 'light'
+    if (style === 'black') style = 'blank-black'
+    if (style === 'white') style = 'blank-white'
+    if (style === 'topographic' || style === 'topo map') style = 'topo'
 
     const styles = getBaseMapStyles()
     const match = styles.find(s => s.id === style)
@@ -1091,6 +1111,125 @@ const deactivateAppCmd: CommandEntry = {
   },
 }
 
+// --- Time animation playback ---
+
+const playbackCmd: CommandEntry = {
+  id: 'core:playback',
+  name: 'Time playback',
+  module: 'core',
+  category: 'view',
+  description: 'Control time animation playback for temporal satellite imagery layers. Start, stop, or toggle playback, and set the animation speed.',
+  patterns: [
+    'play', 'pause', 'play time', 'pause time', 'stop animation',
+    'start animation', 'animate', 'play animation',
+    'animate layers', 'play satellite', 'time lapse',
+  ],
+  params: [
+    { name: 'action', type: 'enum', required: false, description: 'Play, pause, or toggle', options: ['play', 'pause', 'toggle'] },
+    { name: 'speed', type: 'enum', required: false, description: 'Playback speed', options: ['0.5x', '1x', '2x', '4x'] },
+  ],
+  handler: async (params) => {
+    const { startPlayback, pausePlayback, togglePlayback, setPlaybackSpeed, isPlaying, getSpeedOptions } = await import('@/ui/TimeSlider')
+    const { hasVisibleTemporalLayers } = await import('@/data/gibs-layer-factory')
+
+    if (!hasVisibleTemporalLayers()) {
+      return 'No temporal layers are currently visible. Turn on a time-varying satellite layer first (e.g. "show satellite view" or "show sea temperature").'
+    }
+
+    const raw = String(params._raw ?? '').toLowerCase()
+    const action = String(params.action ?? '').toLowerCase()
+
+    // Handle speed change
+    const speedStr = String(params.speed ?? '').toLowerCase()
+    if (speedStr) {
+      const speeds = getSpeedOptions()
+      const label = speedStr.replace('x', '×')
+      const idx = speeds.findIndex(s => s.toLowerCase() === label || s.toLowerCase().replace('×', 'x') === speedStr)
+      if (idx >= 0) setPlaybackSpeed(idx)
+    }
+
+    // Handle action
+    if (action === 'play' || raw.includes('play') || raw.includes('start') || raw.includes('animate')) {
+      startPlayback()
+      return `Time animation playing${speedStr ? ` at ${speedStr}` : ''}`
+    } else if (action === 'pause' || raw.includes('pause') || raw.includes('stop')) {
+      pausePlayback()
+      return 'Time animation paused'
+    } else {
+      togglePlayback()
+      const state = isPlaying() ? 'playing' : 'paused'
+      return `Time animation ${state}`
+    }
+  },
+}
+
+// --- Date stepping ---
+
+const stepForwardCmd: CommandEntry = {
+  id: 'core:step-forward',
+  name: 'Step date forward',
+  module: 'core',
+  category: 'view',
+  description: 'Step the GIBS temporal layer date forward by one day.',
+  patterns: ['step forward', 'next day', 'forward day'],
+  params: [],
+  handler: async () => {
+    const { stepDateForward } = await import('@/ui/TimeSlider')
+    const result = await stepDateForward()
+    return `Date stepped forward to ${result}`
+  },
+}
+
+const stepBackCmd: CommandEntry = {
+  id: 'core:step-back',
+  name: 'Step date back',
+  module: 'core',
+  category: 'view',
+  description: 'Step the GIBS temporal layer date back by one day.',
+  patterns: ['step back', 'previous day', 'back day'],
+  params: [],
+  handler: async () => {
+    const { stepDateBack } = await import('@/ui/TimeSlider')
+    const result = await stepDateBack()
+    return `Date stepped back to ${result}`
+  },
+}
+
+const getDateCmd: CommandEntry = {
+  id: 'core:get-date',
+  name: 'Get current date',
+  module: 'core',
+  category: 'view',
+  description: 'Get the current GIBS temporal layer date.',
+  patterns: ['what date', 'current date', 'get date'],
+  params: [],
+  handler: async () => {
+    const { getCurrentDate } = await import('@/ui/TimeSlider')
+    return `Current GIBS date: ${getCurrentDate()}`
+  },
+}
+
+const setDateCmd: CommandEntry = {
+  id: 'core:set-date',
+  name: 'Set GIBS date',
+  module: 'core',
+  category: 'view',
+  description: 'Set the GIBS temporal layer date to a specific date (YYYY-MM-DD).',
+  patterns: ['set date {date}', 'date {date}', 'go to date {date}'],
+  params: [
+    { name: 'date', type: 'string', required: true, description: 'Date in YYYY-MM-DD format' },
+  ],
+  handler: async (params) => {
+    const { setGlobalDate, getGlobalDate } = await import('@/data/gibs-layer-factory')
+    const { reloadTemporalLayers } = await import('@/data/gibs-layer-factory')
+    const date = String(params.date)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `Invalid date format: "${date}". Use YYYY-MM-DD.`
+    setGlobalDate(date)
+    await reloadTemporalLayers()
+    return `GIBS date set to ${getGlobalDate()}`
+  },
+}
+
 /** All core commands */
 export const coreCommands: CommandEntry[] = [
   goTo, resetView, zoomIn, zoomOut, zoomTo, faceDirection, lookAt, orbit,
@@ -1099,4 +1238,5 @@ export const coreCommands: CommandEntry[] = [
   muteToggle, whatCanYouDo, fullscreen, listProviders, pullModel, setProvider, setCesiumToken,
   postMessage, readMessages,
   listApps, activateAppCmd, deactivateAppCmd,
+  playbackCmd, stepForwardCmd, stepBackCmd, getDateCmd, setDateCmd,
 ]

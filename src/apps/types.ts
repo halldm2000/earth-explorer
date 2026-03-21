@@ -5,10 +5,24 @@
  * and optional UI panels. They can be activated/deactivated at runtime.
  */
 
-import type { ComponentType } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 import type { CommandEntry } from '@/ai/types'
 import type { LayerDef } from '@/features/layers/types'
 import type * as Cesium from 'cesium'
+
+export interface AppToolbarButton {
+  id: string
+  icon: ReactNode
+  label: string
+  onClick: () => void
+}
+
+export interface AppToolbarConfig {
+  icon: ReactNode
+  label: string
+  isVisible?: () => boolean
+  contextButtons?: AppToolbarButton[]
+}
 
 /** Resources an app provides when activated. */
 export interface AppResources {
@@ -18,6 +32,10 @@ export interface AppResources {
   layers: LayerDef[]
   /** Optional sidebar panel component */
   panel?: ComponentType
+  /** Short welcome message shown in chat when the app activates (1-2 sentences describing what's available) */
+  welcome?: string
+  /** Optional toolbar configuration for the app */
+  toolbar?: AppToolbarConfig
 }
 
 /** Context provided to an app during activation. */
@@ -26,6 +44,7 @@ export interface AppContext {
   removeLayer: (id: string) => void
   showLayer: (id: string) => Promise<boolean>
   hideLayer: (id: string) => boolean
+  reloadLayer: (id: string) => Promise<boolean>
   getViewer: () => Cesium.Viewer | null
   onTick: (callback: (dt: number) => void) => () => void
 }

@@ -219,6 +219,8 @@ export function ChatPanel() {
     }
 
     setIsProcessing(false)
+    // Re-focus input so the user can keep typing
+    requestAnimationFrame(() => inputRef.current?.focus())
   }, [inputValue, messages, panelState, isProcessing, setInputValue, addMessage, updateLastAssistant, setStatusText, setPanelState, setIsProcessing])
 
   // Autocomplete suggestions
@@ -484,22 +486,22 @@ function containerStyle(state: PanelState): React.CSSProperties {
   if (state === 'minimized') {
     return {
       ...base,
-      bottom: 16,
+      bottom: 44,  // above bottom bar
       right: 16,
-      width: 'min(400px, calc(100vw - 250px))',
+      width: 'min(500px, calc(100vw - 100px))',
     }
   }
 
   if (state === 'peek') {
     return {
       ...base,
-      bottom: 16,
+      bottom: 44,  // above bottom bar
       right: 16,
       width: 'min(420px, calc(100vw - 250px))',
       maxHeight: '40vh',
-      background: 'rgba(10, 12, 18, 0.88)',
+      background: 'rgba(25, 28, 36, 0.92)',
       backdropFilter: 'blur(20px)',
-      border: '1px solid rgba(255,255,255,0.08)',
+      border: '1px solid rgba(255,255,255,0.1)',
       borderRadius: 12,
       justifyContent: 'flex-end',
     }
@@ -512,9 +514,9 @@ function containerStyle(state: PanelState): React.CSSProperties {
     right: 0,
     bottom: 0,
     width: 'min(480px, 42vw)',
-    background: 'rgba(10, 12, 18, 0.92)',
+    background: 'rgba(25, 28, 36, 0.95)',
     backdropFilter: 'blur(20px)',
-    borderLeft: '1px solid rgba(255,255,255,0.08)',
+    borderLeft: '1px solid rgba(255,255,255,0.1)',
   }
 }
 
@@ -531,6 +533,7 @@ function messageAreaStyle(state: PanelState): React.CSSProperties {
 
 function messageBubbleStyle(role: string, isError?: boolean): React.CSSProperties {
   const isUser = role === 'user'
+  const isSystem = role === 'system'
 
   if (isError) {
     return {
@@ -548,6 +551,22 @@ function messageBubbleStyle(role: string, isError?: boolean): React.CSSPropertie
       display: 'flex',
       alignItems: 'flex-start',
       gap: 8,
+    }
+  }
+
+  if (isSystem) {
+    return {
+      padding: '8px 12px',
+      borderRadius: 8,
+      fontSize: 13,
+      lineHeight: 1.5,
+      maxWidth: '95%',
+      alignSelf: 'center',
+      background: 'rgba(118, 185, 0, 0.06)',
+      color: 'rgba(255,255,255,0.6)',
+      border: '1px solid rgba(118, 185, 0, 0.12)',
+      whiteSpace: 'pre-wrap',
+      wordBreak: 'break-word',
     }
   }
 
@@ -587,9 +606,9 @@ const statusStyle: React.CSSProperties = {
   right: 0,
   marginBottom: 8,
   padding: '6px 14px',
-  background: 'rgba(10, 12, 18, 0.85)',
+  background: 'rgba(25, 28, 36, 0.9)',
   backdropFilter: 'blur(12px)',
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: '1px solid rgba(255,255,255,0.1)',
   borderRadius: 8,
   fontSize: 13,
   color: 'rgba(255,255,255,0.7)',
@@ -599,7 +618,7 @@ const statusStyle: React.CSSProperties = {
 
 const autocompleteStyle: React.CSSProperties = {
   position: 'relative',
-  background: 'rgba(10, 12, 18, 0.95)',
+  background: 'rgba(25, 28, 36, 0.95)',
   border: '1px solid rgba(255,255,255,0.1)',
   borderBottom: 'none',
   borderRadius: '8px 8px 0 0',
@@ -628,9 +647,9 @@ const inputBarStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 8,
   padding: '8px 12px',
-  background: 'rgba(10, 12, 18, 0.85)',
+  background: 'rgba(30, 33, 42, 0.9)',
   backdropFilter: 'blur(20px)',
-  border: '1px solid rgba(255,255,255,0.1)',
+  border: '1px solid rgba(255,255,255,0.12)',
   borderRadius: 12,
 }
 

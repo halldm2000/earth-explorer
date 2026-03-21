@@ -5,10 +5,10 @@
  * deactivation. Each app can provide commands, layers, and UI panels.
  */
 
-import type { WorldscopeApp, AppContext, AppResources } from './types'
+import type { WorldscopeApp, AppContext, AppResources, AppToolbarConfig } from './types'
 import { registry } from '@/ai/registry'
 import {
-  registerLayer, removeLayer, showLayer, hideLayer,
+  registerLayer, removeLayer, showLayer, hideLayer, reloadLayer,
 } from '@/features/layers'
 import { getViewer } from '@/scene/engine'
 
@@ -19,6 +19,20 @@ interface ActiveApp {
 
 const _registered = new Map<string, WorldscopeApp>()
 const _active = new Map<string, ActiveApp>()
+const _welcomeShown = new Set<string>()
+
+// ── Manager subscription system ──
+
+const _managerListeners = new Set<() => void>()
+
+export function subscribeManager(fn: () => void): () => void {
+  _managerListeners.add(fn)
+  return () => { _managerListeners.delete(fn) }
+}
+
+function notifyManager(): void {
+  for (const fn of _managerListeners) fn()
+}
 
 // ── Tick system for onTick callbacks ──
 
@@ -51,6 +65,7 @@ function createAppContext(): AppContext {
     removeLayer,
     showLayer,
     hideLayer,
+    reloadLayer,
     getViewer,
     onTick: (callback: (dt: number) => void) => {
       installTickListener()
@@ -67,8 +82,8 @@ export function registerApp(app: WorldscopeApp): void {
   _registered.set(app.id, app)
 }
 
-/** Activate a registered app by ID. */
-export async function activateApp(id: string): Promise<boolean> {
+/** Activate a registered app by ID. Set silent to suppress welcome message (used for auto-activate on startup). */
+export async function activateApp(id: string, { silent = false } = {}): Promise<boolean> {
   if (_active.has(id)) return true // already active
 
   const app = _registered.get(id)
@@ -91,8 +106,30 @@ export async function activateApp(id: string): Promise<boolean> {
   }
 
   _active.set(id, { app, resources })
+  notifyManager()
   console.log(`[apps] Activated: ${app.name}`)
+
+  // Show welcome on explicit activation (not auto-start)
+  if (!silent) {
+    showAppWelcome(id)
+  }
+
   return true
+}
+
+/** Show an app's welcome message once. Called on first user interaction with an app. */
+export function showAppWelcome(id: string): void {
+  if (_welcomeShown.has(id)) return
+  const entry = _active.get(id)
+  if (!entry?.resources.welcome) return
+
+  _welcomeShown.add(id)
+  import('@/store').then(({ useStore }) => {
+    useStore.getState().addMessage({
+      role: 'system',
+      content: `**${entry.app.name}** — ${entry.resources.welcome}`,
+    })
+  }).catch(() => { /* store not ready yet */ })
 }
 
 /** Deactivate an active app by ID. */
@@ -114,15 +151,16 @@ export function deactivateApp(id: string): boolean {
   app.deactivate?.()
 
   _active.delete(id)
+  notifyManager()
   console.log(`[apps] Deactivated: ${app.name}`)
   return true
 }
 
-/** Activate all apps marked as autoActivate. */
+/** Activate all apps marked as autoActivate (silently — no welcome messages). */
 export async function activateAutoApps(): Promise<void> {
   for (const app of _registered.values()) {
     if (app.autoActivate) {
-      await activateApp(app.id)
+      await activateApp(app.id, { silent: true })
     }
   }
 }
@@ -136,6 +174,31 @@ export function getApps(): Array<{ id: string; name: string; description: string
       name: app.name,
       description: app.description,
       active: _active.has(app.id),
+    })
+  }
+  return result
+}
+
+/** Get all registered apps with their toolbar configs. */
+export function getAppToolbars(): Array<{
+  id: string
+  name: string
+  active: boolean
+  toolbar?: AppToolbarConfig
+}> {
+  const result: Array<{
+    id: string
+    name: string
+    active: boolean
+    toolbar?: AppToolbarConfig
+  }> = []
+  for (const [id, app] of _registered) {
+    const activeEntry = _active.get(id)
+    result.push({
+      id,
+      name: app.name,
+      active: !!activeEntry,
+      toolbar: activeEntry?.resources.toolbar,
     })
   }
   return result

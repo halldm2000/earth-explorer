@@ -5,6 +5,8 @@
  */
 
 import * as Cesium from 'cesium'
+import type { QualityPreset } from '@/store/quality'
+import { setTileCacheBudget } from '@/data/tile-cache'
 
 let _viewer: Cesium.Viewer | null = null
 
@@ -199,12 +201,28 @@ export function stopOrbit(): void {
 
 // ── Base map imagery styles ──
 
-export type BaseMapStyle = 'default' | 'satellite' | 'dark' | 'light' | 'road'
+export type BaseMapStyle = 'default' | 'satellite' | 'dark' | 'light' | 'road' | 'voyager' | 'topo' | 'blank-black' | 'blank-white'
 
 interface BaseMapDef {
   name: string
   description: string
   create: () => Promise<Cesium.ImageryProvider> | Cesium.ImageryProvider
+}
+
+/** Create a 1×1 solid-color imagery provider that covers the whole globe. */
+function solidColorProvider(cssColor: string): Cesium.SingleTileImageryProvider {
+  const canvas = document.createElement('canvas')
+  canvas.width = 1
+  canvas.height = 1
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = cssColor
+  ctx.fillRect(0, 0, 1, 1)
+  return new Cesium.SingleTileImageryProvider({
+    url: canvas.toDataURL(),
+    rectangle: Cesium.Rectangle.MAX_VALUE,
+    tileWidth: 1,
+    tileHeight: 1,
+  })
 }
 
 const BASE_MAPS: Record<BaseMapStyle, BaseMapDef> = {
@@ -247,6 +265,37 @@ const BASE_MAPS: Record<BaseMapStyle, BaseMapDef> = {
       style: Cesium.IonWorldImageryStyle.ROAD,
     }),
   },
+  // NOTE: Sentinel-2 (3954), Blue Marble (3845), Earth at Night (3812) require
+  // adding these assets to your Ion account from the Asset Depot first. Removed
+  // because they 404 with default Ion tokens.
+  voyager: {
+    name: 'Voyager',
+    description: 'CartoDB Voyager — colorful street map',
+    create: () => new Cesium.UrlTemplateImageryProvider({
+      url: 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+      credit: new Cesium.Credit('CartoDB'),
+      maximumLevel: 18,
+    }),
+  },
+  topo: {
+    name: 'Topographic',
+    description: 'OpenTopoMap — topographic contour map',
+    create: () => new Cesium.UrlTemplateImageryProvider({
+      url: 'https://tile.opentopomap.org/{z}/{x}/{y}.png',
+      credit: new Cesium.Credit('OpenTopoMap'),
+      maximumLevel: 17,
+    }),
+  },
+  'blank-black': {
+    name: 'Blank (Black)',
+    description: 'Solid black — useful for testing overlays',
+    create: () => solidColorProvider('#000000'),
+  },
+  'blank-white': {
+    name: 'Blank (White)',
+    description: 'Solid white — useful for testing overlays',
+    create: () => solidColorProvider('#ffffff'),
+  },
 }
 
 let _currentBaseMap: BaseMapStyle = 'default'
@@ -283,4 +332,156 @@ export async function setBaseMapStyle(style: BaseMapStyle): Promise<boolean> {
 
   console.log(`[engine] Base map: ${def.name}`)
   return true
+}
+
+// ── Quality presets ──
+
+interface QualityConfig {
+  shadows: boolean
+  shadowSize: number
+  softShadows: boolean
+  shadowDarkness: number
+  bloom: boolean
+  bloomContrast: number
+  bloomBrightness: number
+  bloomDelta: number
+  bloomSigma: number
+  bloomStepSize: number
+  ambientOcclusion: boolean
+  aoIntensity: number
+  aoBias: number
+  aoLengthCap: number
+  aoStepSize: number
+  fxaa: boolean
+  resolutionScale: number
+  tilesCacheBytes: number
+}
+
+const QUALITY_CONFIGS: Record<QualityPreset, QualityConfig> = {
+  performance: {
+    shadows: false,
+    shadowSize: 2048,
+    softShadows: false,
+    shadowDarkness: 0.3,
+    bloom: false,
+    bloomContrast: 128,
+    bloomBrightness: -0.3,
+    bloomDelta: 1.0,
+    bloomSigma: 3.78,
+    bloomStepSize: 5,
+    ambientOcclusion: false,
+    aoIntensity: 3.0,
+    aoBias: 0.1,
+    aoLengthCap: 0.03,
+    aoStepSize: 1,
+    fxaa: false,
+    resolutionScale: 1.0,
+    tilesCacheBytes: 512 * 1024 * 1024,
+  },
+  quality: {
+    shadows: true,
+    shadowSize: 4096,
+    softShadows: true,
+    shadowDarkness: 0.4,
+    bloom: false,
+    bloomContrast: 128,
+    bloomBrightness: -0.2,
+    bloomDelta: 1.0,
+    bloomSigma: 1.5,
+    bloomStepSize: 1.0,
+    ambientOcclusion: false,
+    aoIntensity: 2.0,
+    aoBias: 0.25,
+    aoLengthCap: 0.01,
+    aoStepSize: 2.0,
+    fxaa: true,
+    resolutionScale: 1.25,
+    tilesCacheBytes: 1024 * 1024 * 1024,
+  },
+  ultra: {
+    shadows: true,
+    shadowSize: 8192,
+    softShadows: true,
+    shadowDarkness: 0.4,
+    bloom: true,
+    bloomContrast: 128,
+    bloomBrightness: -0.2,
+    bloomDelta: 1.0,
+    bloomSigma: 1.5,
+    bloomStepSize: 1.0,
+    ambientOcclusion: true,
+    aoIntensity: 2.0,
+    aoBias: 0.25,
+    aoLengthCap: 0.01,
+    aoStepSize: 2.0,
+    fxaa: true,
+    resolutionScale: 1.5,
+    tilesCacheBytes: 1536 * 1024 * 1024,
+  },
+}
+
+let _currentPreset: QualityPreset = 'quality'
+
+export function getQualityPreset(): QualityPreset { return _currentPreset }
+
+/**
+ * Apply a quality preset to the viewer. Configures shadows, post-processing
+ * (bloom, AO, FXAA), resolution scale, and 3D tiles memory budget.
+ */
+export function applyQualityPreset(preset: QualityPreset): void {
+  if (!_viewer) return
+  const cfg = QUALITY_CONFIGS[preset]
+  _currentPreset = preset
+  const scene = _viewer.scene
+
+  // Shadows
+  _viewer.shadows = cfg.shadows
+  if (_viewer.shadowMap) {
+    _viewer.shadowMap.size = cfg.shadowSize
+    _viewer.shadowMap.softShadows = cfg.softShadows
+    _viewer.shadowMap.darkness = cfg.shadowDarkness
+  }
+
+  // Post-processing: bloom
+  const bloom = scene.postProcessStages.bloom
+  bloom.enabled = cfg.bloom
+  if (cfg.bloom) {
+    bloom.uniforms.glowOnly = false
+    bloom.uniforms.contrast = cfg.bloomContrast
+    bloom.uniforms.brightness = cfg.bloomBrightness
+    bloom.uniforms.delta = cfg.bloomDelta
+    bloom.uniforms.sigma = cfg.bloomSigma
+    bloom.uniforms.stepSize = cfg.bloomStepSize
+  }
+
+  // Post-processing: ambient occlusion (SSAO)
+  const ao = scene.postProcessStages.ambientOcclusion
+  ao.enabled = cfg.ambientOcclusion
+  if (cfg.ambientOcclusion) {
+    ao.uniforms.intensity = cfg.aoIntensity
+    ao.uniforms.bias = cfg.aoBias
+    ao.uniforms.lengthCap = cfg.aoLengthCap
+    ao.uniforms.stepSize = cfg.aoStepSize
+  }
+
+  // Post-processing: FXAA
+  scene.postProcessStages.fxaa.enabled = cfg.fxaa
+
+  // Resolution scale (supersampling)
+  _viewer.resolutionScale = cfg.resolutionScale
+
+  // 3D tiles memory budget
+  if (_osmTileset) {
+    _osmTileset.cacheBytes = cfg.tilesCacheBytes
+    _osmTileset.maximumCacheOverflowBytes = cfg.tilesCacheBytes / 2
+  }
+  if (_photoTileset) {
+    _photoTileset.cacheBytes = cfg.tilesCacheBytes
+    _photoTileset.maximumCacheOverflowBytes = cfg.tilesCacheBytes / 2
+  }
+
+  // Adjust in-memory tile cache budget to match quality tier
+  setTileCacheBudget(preset)
+
+  console.log(`[engine] Quality preset: ${preset} (resolution ${cfg.resolutionScale}x, shadows ${cfg.shadows ? 'on' : 'off'})`)
 }
