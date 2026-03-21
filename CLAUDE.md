@@ -7,45 +7,45 @@ This project uses the **agent-studio** multi-agent framework for development. Th
 ## Tech Stack
 
 - **Framework**: React 18+ with TypeScript
-- **3D Engine**: CesiumJS (globe, terrain, 3D tiles, geospatial primitives)
-- **State**: Zustand with slices pattern (one slice per feature)
+- **3D Engine**: CesiumJS 1.139 (globe, terrain, 3D tiles, geospatial primitives)
+- **State**: Zustand with slices pattern
 - **Build**: Vite with vite-plugin-cesium
-- **Styling**: CSS Modules with CSS custom properties for theming
-- **Animation**: react-spring (DOM), manual spring physics via Cesium render hooks (3D)
-- **Data formats**: NetCDF, GRIB, CSV, GeoJSON (loaded via typed loaders)
-- **AI integration**: Streaming API client (backend proxy for API keys)
+- **Data formats**: GeoJSON, WMTS imagery (more planned: NetCDF, GRIB, CSV)
+- **AI integration**: Multi-provider streaming client (Anthropic, OpenAI, Ollama, OpenRouter) with 3-tier intent routing
+- **Audio**: Procedural Web Audio API sound effects
 
 ## Architecture
 
 ```
 src/
-├── app/          # Shell, layout, providers, routing
-├── features/     # Self-contained feature modules (one dir per feature)
-├── scene/        # CesiumJS viewer, camera, terrain, buildings, atmosphere
-├── data/         # Data pipeline (loaders, transforms, cache)
-├── ai/           # AI integration (client, streaming)
-├── ui/           # Shared UI components (Panel, Slider, ColorBar, Toggle)
-├── shared/       # Types, constants, registry, hooks
-└── store/        # Zustand store setup
+├── app/          # Shell (App.tsx, SetupScreen.tsx)
+├── ai/           # AI router, providers, command registry, core commands
+├── apps/         # App system (manager, types) for dynamic feature registration
+├── audio/        # Procedural Web Audio sound effects
+├── cli/          # Standalone CLI chat client
+├── features/     # Feature modules (layers, earthquake, gibs)
+├── mcp/          # MCP server (stdio + HTTP), browser bridge, Vite broker plugin
+├── plugin-api/   # Plugin contract types (ExplorerAPI, EarthPlugin — defined, not yet loaded)
+├── scene/        # CesiumJS viewer, engine state, buildings, base maps
+├── store/        # Zustand store (tokens, chat state)
+└── ui/           # ChatPanel (three-state: minimized, peek, full)
 ```
 
-Each feature in `features/` has: `index.ts` (public API + registration), `state.ts` (Zustand slice), `panel.tsx` (sidebar UI), `renderer.ts` (Cesium entities/primitives/imagery), `data.ts` (loading), `types.ts`.
-
-Features register via `shared/registry.ts`. Adding a feature never requires editing core files.
+Features register as "apps" via `apps/manager.ts`, which manages lifecycle, commands, and layers. The command registry lives in `ai/registry.ts`. Adding a feature never requires editing core files.
 
 ## Cesium-Specific Conventions
 
-- The Cesium Viewer lives in `scene/`. All Cesium API access flows through `scene/engine.ts` helpers, not raw Cesium calls scattered through features.
-- Features add to the globe via the engine abstraction: `addImageryLayer()`, `addEntity()`, `addPrimitive()`, `addPostProcessStage()`.
-- Camera state is written to the Zustand store by the scene module. Features read camera state from the store, never from `viewer.camera` directly.
-- The Cesium render loop is managed by `scene/`. Features hook into pre/post render via the store or engine events, never by touching `viewer.scene` directly.
+- The Cesium Viewer lives in `scene/`. Engine state (viewer, building mode, base map, orbit) is managed via `scene/engine.ts`.
+- Apps interact with the globe through the `AppContext` provided by the app manager: `addLayer()`, `removeLayer()`, `showLayer()`, `hideLayer()`, `getViewer()`, `onTick()`.
+- Camera status is synced to the Zustand store by `CesiumViewer.tsx` on each frame. Commands read position from the store or viewer as needed.
+- Building mode auto-switches between OSM and Google Photorealistic 3D Tiles based on altitude (hysteresis: 50km→photo, 55km→OSM).
 
 ## API Tokens
 
-- **Cesium Ion**: Required. Stored in `.env` as `VITE_CESIUM_ION_TOKEN`. Provides terrain (asset 1), OSM buildings (asset 96188), and imagery.
-- **Google Maps**: Optional. Stored in `.env` as `VITE_GOOGLE_MAPS_KEY`. Enables photorealistic 3D tiles (Cesium Ion asset 2275207).
+- **Cesium Ion**: Required. Stored in `.env` as `VITE_CESIUM_ION_TOKEN`. Provides terrain (asset 1), OSM buildings (asset 96188), and imagery. A default token is embedded for basic usage.
+- **Anthropic**: Optional. Stored in `.env` as `VITE_ANTHROPIC_API_KEY`. Enables Claude-powered AI chat (Haiku for classification, Sonnet for conversation).
 
-Never commit `.env`. The app shows an onboarding screen if tokens are missing.
+Never commit `.env`.
 
 ## MCP Integration (Important for AI Agents)
 

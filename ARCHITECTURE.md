@@ -21,15 +21,20 @@ The core is intentionally small. It handles:
 
 ```
 src/
-  ai/              Command system, router, registry, Claude provider
-  app/             App shell, entry point
-  audio/           Procedural sound effects
+  ai/              Command system, 3-tier router, registry, providers (Anthropic, OpenAI-compat)
+  app/             App shell (App.tsx, SetupScreen.tsx)
+  apps/            App lifecycle manager (register, activate, deactivate)
+  audio/           Procedural Web Audio sound effects
+  cli/             Standalone CLI chat client
   features/
     layers/        Toggleable data layers (GeoJSON, imagery, tilesets)
-  plugin-api/      Plugin contract types and API factory
+    earthquake/    USGS real-time earthquake monitor (app)
+    gibs/          NASA GIBS satellite imagery layers (app)
+  mcp/             MCP server (stdio + HTTP), browser bridge, Vite broker plugin
+  plugin-api/      Plugin contract types (defined, loader not yet built)
   scene/           Cesium viewer, engine state, building/base-map management
   store/           Zustand state (tokens, chat)
-  ui/              Chat panel
+  ui/              Chat panel (three-state: minimized, peek, full)
 ```
 
 ## Plugin System
@@ -271,7 +276,7 @@ The built-in chat panel works for quick commands, but a laptop user might prefer
 
 What to build and in what sequence, prioritized by how much downstream work each piece unblocks.
 
-### Phase 1: Core Runtime (current)
+### Phase 1: Core Runtime (complete)
 - [x] 3D globe with terrain, buildings, atmosphere
 - [x] Conversational command system with pattern matching + Claude
 - [x] Layer system (GeoJSON vectors: borders, coastlines, rivers)
@@ -283,12 +288,18 @@ What to build and in what sequence, prioritized by how much downstream work each
 - [x] **AI tool use: auto-generate tool defs from command registry**
 - [x] **OpenAI-compatible provider** (covers OpenAI, Ollama, OpenRouter, any OpenAI-compatible API)
 - [x] **Provider switching UI** (set provider command, multi-provider store)
-- [x] **Query tools** (camera, layers, scene, elevation, screenshot with vision)
+- [x] **Query tools** (camera, layers, scene — implemented; elevation, screenshot — not yet)
 - [x] **AI intent classifier** (Haiku-based, replaces regex as primary router)
 - [x] **Chat markdown rendering** (inline bold, italic, code, code blocks)
-- [ ] **MCP server** (expose command registry for external chat interfaces like Claude Desktop)
+- [x] **MCP server** (dual transport: stdio + HTTP, WebSocket bridge, Vite broker plugin)
+- [x] **App system** (dynamic registration, lifecycle management, resource tracking)
+- [x] **Procedural audio** (Web Audio synth: snap, ping, success, rumble, mute toggle)
+- [x] **CLI chat client** (standalone stdin/stdout via MCP protocol)
+- [ ] query:screenshot (canvas capture + vision)
+- [ ] query:elevation (terrain height at point)
 - [ ] Plugin loader (load from URL, validate apiVersion)
 - [ ] Data-only plugin loader (JSON manifest)
+- [ ] SetupScreen integration (onboarding for missing tokens)
 
 ### Phase 2: Shared Visualization Toolkit
 - [ ] Colormap system (built-in library, custom registration)
@@ -299,8 +310,9 @@ What to build and in what sequence, prioritized by how much downstream work each
 - [ ] Grid renderer (for gridded data overlays, GPU-efficient)
 
 ### Phase 3: First Plugins (prove the architecture)
-- [ ] **Earthquake monitor** (USGS GeoJSON feed, real-time points, simple data model)
-- [ ] **NASA GIBS satellite imagery** (hundreds of WMTS layers, zero auth)
+- [x] **Earthquake monitor** (USGS GeoJSON feed, real-time — implemented as app, not external plugin)
+- [x] **NASA GIBS satellite imagery** (4 WMTS layers — implemented as app, not external plugin)
+- [ ] Migrate earthquake + GIBS from built-in apps to external plugins (prove the plugin loader)
 - [ ] **Plugin template repo** (starter kit for external developers)
 
 ### Phase 4: Complex Plugins
