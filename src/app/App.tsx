@@ -15,6 +15,7 @@ import { SatelliteInfo } from '@/ui/SatelliteInfo'
 import { EarthquakeInfo } from '@/ui/EarthquakeInfo'
 import { ShipInfo } from '@/ui/ShipInfo'
 import { ChatPanel } from '@/ui/ChatPanel'
+import { ExtensionCatalog } from '@/ui/ExtensionCatalog'
 import { initAI } from '@/ai/init'
 
 export function App() {
@@ -55,6 +56,7 @@ export function App() {
       <ShipInfo />
       <HurricanePanel open={hurricanePanelOpen} onClose={() => setHurricanePanelOpen(false)} />
       <ChatPanel />
+      <ExtensionCatalog />
     </>
   )
 }

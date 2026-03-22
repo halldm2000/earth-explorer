@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { createChatSlice, type ChatSlice } from './chat'
 import { createLayerPanelSlice, type LayerPanelSlice } from './layers'
 import { createQualitySlice, type QualitySlice } from './quality'
+import { createExtensionPanelSlice, type ExtensionPanelSlice } from './extensions'
 
 // Default Cesium Ion token (free tier, 500K monthly tile requests).
 // Users can override via VITE_CESIUM_ION_TOKEN env var or the settings command.
@@ -17,7 +18,7 @@ function getInitialCesiumToken(): string {
   return DEFAULT_CESIUM_TOKEN
 }
 
-export interface AppState extends ChatSlice, LayerPanelSlice, QualitySlice {
+export interface AppState extends ChatSlice, LayerPanelSlice, QualitySlice, ExtensionPanelSlice {
   cesiumToken: string
   setCesiumToken: (token: string) => void
 }
@@ -38,4 +39,7 @@ export const useStore = create<AppState>((set, get, store) => ({
 
   // Quality preset slice
   ...createQualitySlice(set, get, store),
+
+  // Extension panel slice
+  ...createExtensionPanelSlice(set, get, store),
 }))

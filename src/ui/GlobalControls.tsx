@@ -37,6 +37,7 @@ import {
   isShipsVisible, getShips, subscribe as subSh,
 } from '@/features/ships'
 import { registry } from '@/ai/registry'
+import { getExtensions, subscribeExtensions } from '@/extensions/registry'
 
 const PRESET_LABELS: Record<QualityPreset, string> = {
   performance: 'PERF',
@@ -55,6 +56,8 @@ export function GlobalControls() {
   const cycleQualityPreset = useStore(s => s.cycleQualityPreset)
   const layerPanelOpen = useStore(s => s.layerPanelOpen)
   const toggleLayerPanel = useStore(s => s.toggleLayerPanel)
+  const extensionPanelOpen = useStore(s => s.extensionPanelOpen)
+  const toggleExtensionPanel = useStore(s => s.toggleExtensionPanel)
 
   const [sceneState, setSceneState] = useState(getSceneToggles)
   const [, setTick] = useState(0)
@@ -225,6 +228,12 @@ export function GlobalControls() {
           icon={<LayersIcon color={layerPanelOpen ? 'var(--accent, #4FC3F7)' : 'rgba(255,255,255,0.85)'} />}
         />
         <ControlBtn
+          onClick={toggleExtensionPanel}
+          label="Exts"
+          active={extensionPanelOpen}
+          icon={<ExtensionsIcon color={extensionPanelOpen ? 'var(--accent, #4FC3F7)' : 'rgba(255,255,255,0.85)'} />}
+        />
+        <ControlBtn
           onClick={toggleSceneLighting}
           label="Sun"
           active={sceneState.lighting}
@@ -296,6 +305,17 @@ function LayersIcon({ color }: { color: string }) {
       <path d="M8 2L1 6l7 4 7-4z" stroke={color} strokeWidth="1.2" strokeLinejoin="round" />
       <path d="M1 8.5l7 4 7-4" stroke={color} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M1 11l7 4 7-4" stroke={color} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function ExtensionsIcon({ color }: { color: string }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ display: 'block' }}>
+      <rect x="2" y="2" width="5" height="5" rx="1" stroke={color} strokeWidth="1.2" />
+      <rect x="9" y="2" width="5" height="5" rx="1" stroke={color} strokeWidth="1.2" />
+      <rect x="2" y="9" width="5" height="5" rx="1" stroke={color} strokeWidth="1.2" />
+      <path d="M11.5 9.5v4M9.5 11.5h4" stroke={color} strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   )
 }

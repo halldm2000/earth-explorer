@@ -22,14 +22,27 @@ Data format parsers, rendering features, and visualization tools that other exte
 - **CSV Data Loader** — Import point and gridded data from CSV files; auto-detect lat/lon columns, support value-based coloring *(planned)*
 - **GeoJSON Support** — Load and render GeoJSON features on the globe *(done)*
 - **WMTS Imagery** — Web Map Tile Service imagery layers *(done)*
+- **Zarr/Cloud-Optimized** — Stream data from cloud-optimized Zarr stores for multi-petabyte datasets (ERA5, ARCO) without local download *(planned)*
+- **COG/GeoTIFF** — Display Cloud Optimized GeoTIFFs for satellite imagery, elevation, and raster geospatial data *(planned)*
+- **OpenUSD Scenes** — Import and render OpenUSD scene descriptions on the globe, bridging with NVIDIA Omniverse *(planned)*
+- **KML/KMZ Import** — Load Google Earth KML/KMZ files for points of interest, paths, polygons, ground overlays *(planned)*
 
 ### Rendering
 - **Volumetric Clouds** — 3D cloud rendering using raymarching or billboard techniques; integrate with weather data for realistic cloud cover *(planned)*
 - **2D / 2.5D Flat Mode** — Replace the 3D globe with flat (Mercator, equirectangular) or topographic relief projection for traditional map views *(planned)* — `exclusiveGroup: projection`
+- **Wind/Flow Vectors** — Animated particle streams showing wind, ocean current, or other vector field data on the globe *(planned)*
+- **Atmospheric Glow** — Enhanced atmospheric scattering for photorealistic sunrise/sunset rendering *(planned)*
+- **Cross-Section Viewer** — Slice through volumetric atmospheric data along user-defined vertical cross-sections *(planned)*
+- **Temporal Animator** — Timeline slider with play/pause and configurable frame rates for time-varying datasets *(planned)*
 
 ### Visualization & Charting
 - **Matplotlib-style Plotting** — Generate static plots of data (line, scatter, heatmap, histogram) as overlay panels or export images *(planned)*
 - **Interactive Charting** — Zoomable, brushable charts of time series and spatial data; linked selection with the globe *(planned)*
+
+### Analysis & Plotting
+- **Point Inspector** — Click any location to see all available data values at that point across all layers *(planned)*
+- **Region Statistics** — Draw polygons or select regions to compute area-averaged statistics, histograms, trends *(planned)*
+- **Comparison View** — Side-by-side or overlay comparison of datasets, time steps, or model outputs with difference mapping *(planned)*
 
 ---
 
@@ -55,6 +68,9 @@ Feature modules that register with the app manager. Each app can add layers, com
 - **Landsat Browser** — Historical Landsat imagery, change detection *(planned)*
 - **SAR Imagery** — Sentinel-1 radar imagery for flood/ice mapping *(planned)*
 - **Air Quality (Aerosol)** — MODIS/VIIRS aerosol optical depth *(planned)*
+- **Imagery Selector** — UI panel for browsing and switching between available imagery providers *(planned)*
+- **Custom WMS/WMTS** — Add arbitrary WMS or WMTS endpoints as globe layers *(planned)*
+- **Terrain Providers** — Switch between terrain sources: Cesium World, Mapbox, custom quantized mesh, flat ellipsoid *(planned)*
 
 ### Climate & Weather
 - **Weather Overlay** — Temperature, wind, precipitation from GFS/ERA5 *(planned)*
@@ -73,6 +89,8 @@ Feature modules that register with the app manager. Each app can add layers, com
 - **CorrDiff Super-Resolution** — Downscale coarse weather data to high resolution *(planned)* — `companions: [fourcastnet, weather-overlay]`
 - **Surya Heliophysics AI** — Solar physics model; solar flare and CME prediction *(planned)* — `companions: [solar-globe]`
 - **Torch Harmonics** — GPU-accelerated spherical harmonics library for global field analysis *(planned)*
+- **GenCast / NeuralGCM** — Google DeepMind and other third-party weather AI models for comparison and benchmarking *(planned)*
+- **AIFS (ECMWF)** — ECMWF's Artificial Intelligence Forecasting System, relevant to NVIDIA-ECMWF partnership *(planned)*
 
 ### Digital Twins & Simulation
 - **Flood Simulation (Modulus)** — Physics-ML flood modeling *(planned)* — `exclusiveGroup: simulation`
@@ -122,6 +140,7 @@ Alternative celestial bodies. Each globe replaces the Earth view with a differen
 - **Solar Globe** — SDO/AIA data visualization, sunspot tracking, solar flare activity, coronal features *(planned)* — `exclusiveGroup: globe`, `companions: [surya-heliophysics]`
 - **Venus Globe** — Magellan radar topography, named features *(planned)* — `exclusiveGroup: globe`
 - **Jupiter Moons** — Europa, Ganymede, Io, Callisto surfaces from Galileo/Juno data *(planned)* — `exclusiveGroup: globe`
+- **Exoplanet Catalog** — 3D star map of known exoplanet systems with drill-down to individual system visualizations *(future)* — `exclusiveGroup: globe`
 
 ---
 
@@ -134,6 +153,8 @@ Where GPU-accelerated inference and simulation workloads run. Multiple can be co
 - **Remote GPU** — On-premise machine (e.g., workstation at office); SSH tunnel or API endpoint *(planned)*
 - **Cloud GPU** — Cloud instances (AWS, GCP, Lambda Labs, etc.); auto-provision and tear down *(planned)*
 - **NVIDIA NIM** — NVIDIA Inference Microservices; managed API endpoints for Earth-2 and other NVIDIA models *(planned)*
+
+> **Infrastructure:** Job Manager (unified submission, status, queues), Result Cache (content-addressed by model+input hash), Data Pipeline (automated input fetching/regridding), Auth Manager (unified credentials)
 
 ---
 
@@ -159,6 +180,13 @@ Knowledge packs and tool sets that augment the AI assistant's domain expertise.
 - **Geospatial Analysis Tools** — Spatial queries, buffer analysis, coordinate transforms, projections *(planned)*
 - **Satellite Imagery Interpretation** — Identify land cover, cloud types, vegetation indices from satellite data *(planned)*
 - **Climate Data Analysis** — Statistical analysis of climate time series, trend detection, anomaly identification *(planned)*
+- **Oceanography** — SST analysis, ENSO monitoring, ocean heat content, sea level, ocean indices *(planned)*
+- **Air Quality** — Pollutant sources, dispersion modeling, AQI computation, sensor network queries *(planned)*
+- **Space Weather** — Solar wind, magnetosphere, aurora forecasting; companion to Solar Globe and Surya *(planned)*
+- **Seismology** — Earthquake catalogs, fault maps, seismic hazard, USGS feed queries *(planned)*
+- **Hydrology** — River basins, flood modeling, water resources, watershed delineation *(future)*
+- **Wildfire** — Fire detection (FIRMS), fire weather indices, smoke dispersion *(future)*
+- **Agriculture** — Crop monitoring, soil moisture, growing degree days, drought indices *(future)*
 
 ---
 
@@ -175,3 +203,26 @@ Visual appearance presets. Each theme controls colors, UI styling, and optional 
 
 *Add ideas freely. Mark items (done), (in progress), or (planned) as appropriate.*
 *Composition annotations (exclusiveGroup, companions) define how extensions interact at runtime.*
+
+---
+
+## Development Priorities
+
+Suggested near-term ordering based on demo value, strategic alignment, and technical dependencies:
+
+1. Extension system architecture *(done)*
+2. NetCDF + HEALPix readers — most important data formats for Earth science AI
+3. StormCast / cBottle integration — highest-impact Earth-2 model demos
+4. DGX Spark support — aligns with NVIDIA hardware strategy
+5. Moon Globe app — demonstrates multi-planetary capability
+6. AI Skills (Weather Analysis) — first skill package, proves the concept
+7. Temporal Animator + Wind Vectors — high visual impact, essential for weather model viz
+8. GeoGuessr game — fun, demonstrates platform flexibility
+
+---
+
+## Licensing
+
+- **Open source (Apache 2.0):** Core platform, data format readers, basic visualization, community skills
+- **NVIDIA-licensed:** Earth-2 model integrations, DGX Spark support, proprietary technology extensions
+- **Third-party:** Community and commercial partner extensions via registry/marketplace
