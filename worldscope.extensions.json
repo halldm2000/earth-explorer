@@ -1,0 +1,16 @@
+{
+  "$schema": "./src/extensions/config-schema.json",
+  "description": "Default extensions that ship with Worldscope. These activate on first run.",
+  "defaults": [
+    "earthquake",
+    "hurricane",
+    "satellite",
+    "flights",
+    "ships",
+    "boundaries",
+    "gibs",
+    "gibs-extra",
+    "openseamap",
+    "labels"
+  ]
+}
