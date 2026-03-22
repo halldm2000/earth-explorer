@@ -13,6 +13,8 @@ import { createExtensionAPI } from './api'
 import { registerLayer, removeLayer, showLayer } from '@/features/layers/manager'
 import { registry as commandRegistry } from '@/ai/registry'
 import { registerSources } from '@/sources/catalog'
+import { syncFromExtension, unsyncFromExtension } from '@/apps/manager'
+import type { AppResources } from '@/apps/types'
 
 // ── Internal state ──
 
@@ -100,6 +102,24 @@ export async function activateExtension(id: string, options?: { silent?: boolean
     }
 
     entry.state = 'active'
+
+    // Sync app-kind extensions to the legacy app manager (for AppDock toolbar)
+    if (ext.kind === 'app' && entry.resources) {
+      const res = entry.resources
+      const appResources: AppResources = {
+        commands: res.commands ?? [],
+        layers: res.layers ?? [],
+        panel: res.panel,
+        welcome: res.welcome,
+        toolbar: res.toolbar,
+      }
+      syncFromExtension(
+        { id: ext.id, name: ext.name, description: ext.description, autoActivate: ext.autoActivate ?? false,
+          activate: () => appResources, deactivate: ext.deactivate },
+        appResources,
+      )
+    }
+
     notify()
 
     // Show welcome message
@@ -127,6 +147,11 @@ export function deactivateExtension(id: string): boolean {
   if (!entry || entry.state !== 'active') return false
 
   const ext = entry.extension
+
+  // Unsync from legacy app manager (AppDock)
+  if (ext.kind === 'app') {
+    unsyncFromExtension(ext.id)
+  }
 
   // Unregister commands
   commandRegistry.unregisterModule(ext.id)

@@ -165,6 +165,29 @@ export async function activateAutoApps(): Promise<void> {
   }
 }
 
+/**
+ * Sync an app activated by the extension system into the app manager.
+ * This lets AppDock see the app's toolbar without double-registering resources.
+ * Called by the extension registry for kind='app' extensions.
+ */
+export function syncFromExtension(
+  app: WorldscopeApp,
+  resources: AppResources,
+): void {
+  _registered.set(app.id, app)
+  _active.set(app.id, { app, resources })
+  notifyManager()
+}
+
+/**
+ * Remove an app synced from the extension system.
+ */
+export function unsyncFromExtension(id: string): void {
+  _active.delete(id)
+  _registered.delete(id)
+  notifyManager()
+}
+
 /** Get all registered apps with their activation status. */
 export function getApps(): Array<{ id: string; name: string; description: string; active: boolean }> {
   const result: Array<{ id: string; name: string; description: string; active: boolean }> = []
