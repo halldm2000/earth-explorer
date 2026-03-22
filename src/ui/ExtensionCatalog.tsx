@@ -82,13 +82,18 @@ export function ExtensionCatalog() {
     (a, b) => (KIND_META[a[0]]?.order ?? 99) - (KIND_META[b[0]]?.order ?? 99),
   )
 
+  const disableExt = useStore(s => s.disableExtension)
+  const enableExt = useStore(s => s.enableExtension)
+
   const handleToggle = useCallback(async (id: string, currentState: string) => {
     if (currentState === 'active') {
       deactivateExtension(id)
+      disableExt(id)
     } else {
       await activateExtension(id)
+      enableExt(id)
     }
-  }, [])
+  }, [disableExt, enableExt])
 
   if (!open) return null
 

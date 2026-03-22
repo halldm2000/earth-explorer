@@ -10,6 +10,21 @@
 import type { Extension } from './types'
 import { registerExtension, activateExtension } from './registry'
 
+/** Read persisted user preferences for which extensions are disabled/enabled. */
+function getUserPrefs(): { disabled: Set<string>; enabled: Set<string> } {
+  try {
+    const raw = localStorage.getItem('worldscope-extension-prefs')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      return {
+        disabled: new Set(Array.isArray(parsed.disabled) ? parsed.disabled : []),
+        enabled: new Set(Array.isArray(parsed.enabled) ? parsed.enabled : []),
+      }
+    }
+  } catch { /* ignore */ }
+  return { disabled: new Set(), enabled: new Set() }
+}
+
 type ExtensionModule = { default: Extension } | { extension: Extension }
 
 function getExtension(mod: ExtensionModule): Extension | undefined {
@@ -85,12 +100,20 @@ export async function loadExtensions(): Promise<void> {
     registerExtension(ext)
   }
 
-  // Activate auto-start extensions (silently — no welcome messages on startup)
+  // Activate extensions based on autoActivate + user preferences
+  const prefs = getUserPrefs()
+  let activatedCount = 0
+
   for (const ext of sorted) {
-    if (ext.autoActivate) {
+    // User explicitly disabled this extension — skip even if autoActivate
+    if (prefs.disabled.has(ext.id)) continue
+
+    // Activate if autoActivate OR user explicitly enabled
+    if (ext.autoActivate || prefs.enabled.has(ext.id)) {
       await activateExtension(ext.id, { silent: true })
+      activatedCount++
     }
   }
 
-  console.log(`[extensions] Loaded ${sorted.length} extensions (${sorted.filter(e => e.autoActivate).length} auto-activated)`)
+  console.log(`[extensions] Loaded ${sorted.length} extensions (${activatedCount} auto-activated)`)
 }
