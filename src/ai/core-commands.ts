@@ -12,6 +12,7 @@ import {
   type BaseMapStyle,
 } from '@/scene/engine'
 import { toggleMute, isMuted, playRumble } from '@/audio/sounds'
+import { toggleSceneShadows } from '@/scene/CesiumViewer'
 
 // --- Helpers ---
 
@@ -386,6 +387,19 @@ const toggleWater: CommandEntry = {
     const viewer = getViewer()
     if (!viewer) return
     viewer.scene.globe.showWaterEffect = !viewer.scene.globe.showWaterEffect
+  },
+}
+
+const toggleShadows: CommandEntry = {
+  id: 'core:toggle-shadows',
+  name: 'Toggle shadows',
+  module: 'core',
+  category: 'view',
+  description: 'Toggle shadow mapping on/off',
+  patterns: ['toggle shadows', 'shadows on', 'shadows off', 'enable shadows', 'disable shadows'],
+  params: [],
+  handler: () => {
+    toggleSceneShadows()
   },
 }
 
@@ -1248,7 +1262,7 @@ const setDateCmd: CommandEntry = {
 /** All core commands */
 export const coreCommands: CommandEntry[] = [
   goTo, resetView, zoomIn, zoomOut, zoomTo, faceDirection, lookAt, orbit,
-  toggleBuildings, toggleTerrain, toggleLighting, toggleWater, setTimeOfDay,
+  toggleBuildings, toggleTerrain, toggleLighting, toggleWater, toggleShadows, setTimeOfDay,
   baseMap, listBaseMaps,
   muteToggle, whatCanYouDo, fullscreen, listProviders, pullModel, setProvider, setCesiumToken,
   postMessage, readMessages,
