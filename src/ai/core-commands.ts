@@ -9,6 +9,7 @@ import {
   getViewer, getBuildingMode, setBuildingMode, setAutoSwitch,
   setBaseMapStyle, getBaseMapStyles, getBaseMapStyle,
   startOrbit, stopOrbit, isOrbiting,
+  hideAllBuildings, restoreBuildings,
   type BaseMapStyle,
 } from '@/scene/engine'
 import { toggleMute, isMuted, playRumble } from '@/audio/sounds'
@@ -1504,6 +1505,39 @@ const presentationModeCmd: CommandEntry = {
   },
 }
 
+const setViewMode: CommandEntry = {
+  id: 'core:set-view-mode',
+  name: 'Set view mode',
+  module: 'core',
+  category: 'view',
+  description: 'Switch between 3D globe, 2D flat map, or 2.5D Columbus view',
+  patterns: [
+    'view mode {mode}', 'set view {mode}', 'switch to {mode}',
+    '2d mode', '3d mode', '2.5d mode', 'columbus view', 'flat map', 'globe view',
+  ],
+  params: [
+    { name: 'mode', type: 'enum', required: true, description: 'View mode', options: ['3d', '2d', '2.5d', 'columbus'] },
+  ],
+  handler: (params) => {
+    const viewer = getViewer()
+    if (!viewer) return 'No viewer available'
+    const mode = String(params.mode ?? params._raw ?? '').toLowerCase()
+    if (mode.includes('2.5') || mode.includes('columbus')) {
+      hideAllBuildings()
+      viewer.scene.morphToColumbusView(1.0)
+      return 'Switching to 2.5D Columbus View'
+    } else if (mode.includes('2d') || mode.includes('flat')) {
+      hideAllBuildings()
+      viewer.scene.morphTo2D(1.0)
+      return 'Switching to 2D map view'
+    } else {
+      viewer.scene.morphTo3D(1.0)
+      restoreBuildings()
+      return 'Switching to 3D globe view'
+    }
+  },
+}
+
 /** All core commands */
 export const coreCommands: CommandEntry[] = [
   goTo, resetView, zoomIn, zoomOut, zoomTo, faceDirection, lookAt, orbit,
@@ -1516,4 +1550,5 @@ export const coreCommands: CommandEntry[] = [
   setGlow, resetGlow,
   wireframe,
   presentationModeCmd,
+  setViewMode,
 ]
