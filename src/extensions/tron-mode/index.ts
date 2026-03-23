@@ -1,145 +1,234 @@
+/**
+ * Tron Mode — NVIDIA-inspired cyberpunk globe theme.
+ *
+ * Single switch that transforms the globe into green wireframe outlines
+ * on a black background with green atmospheric glow, elevation contours,
+ * labels, and anti-aliased lines.
+ */
+
 import * as Cesium from 'cesium'
 import type { Extension, ExtensionAPI } from '@/extensions/types'
 import { getViewer, getBaseMapStyle, setBaseMapStyle, type BaseMapStyle } from '@/scene/engine'
-import { getAllLayers, setGeoJsonProperty, getGeoJsonProperties } from '@/features/layers/manager'
+import {
+  getAllLayers, showLayer, hideLayer,
+  setGeoJsonProperty, getGeoJsonProperties, setLayerProperty,
+} from '@/features/layers/manager'
 
 const NVIDIA_GREEN = '#76B900'
-const NVIDIA_GREEN_BRIGHT = '#8ACE00'
 
 // ── Saved state for clean deactivation ──
 
 interface SavedState {
   baseMap: string
   bloomEnabled: boolean
-  bloomUniforms: {
-    glowOnly: boolean
-    contrast: number
-    brightness: number
-    delta: number
-    sigma: number
-    stepSize: number
-  }
+  bloomUniforms: Record<string, unknown>
   globeMaterial: Cesium.Material | undefined
   globeBaseColor: Cesium.Color
   showWaterEffect: boolean
-  atmosphere: {
-    hueShift: number
-    saturationShift: number
-    brightnessShift: number
-  }
-  geoJsonColors: Map<string, { stroke: string; fill: string }>
-  edgeStage: Cesium.PostProcessStage | null
+  fxaaEnabled: boolean
+  atmosphere: { hueShift: number; saturationShift: number; brightnessShift: number }
+  skyAtmosphere: { hueShift: number; saturationShift: number; brightnessShift: number } | null
+  geoJsonColors: Map<string, { stroke: string; fill: string; width: number }>
+  labelsWereVisible: boolean
+  bordersWereVisible: boolean
+  coastlinesWereVisible: boolean
+  riversWereVisible: boolean
+  glowStage: Cesium.PostProcessStage | null
 }
 
 let _savedState: SavedState | null = null
-
-// ── Extension definition ──
 
 const extension: Extension = {
   id: 'tron-mode',
   name: 'Tron Mode',
   kind: 'theme',
-  description: 'NVIDIA-inspired cyberpunk theme with glowing green contour lines, bloom, and edge detection on a dark globe.',
+  description: 'NVIDIA-inspired cyberpunk theme — green wireframe outlines, black globe, neon glow ring.',
   tags: ['theme', 'visual', 'nvidia', 'cyberpunk', 'neon'],
   autoActivate: false,
 
   async activate(api: ExtensionAPI) {
     const viewer = api.unsafe.getViewer()
     if (!viewer) {
-      console.warn('[tron-mode] No viewer available, cannot activate')
-      return { commands: [], welcome: 'Tron Mode failed — no viewer available.' }
+      console.warn('[tron-mode] No viewer available')
+      return { commands: [], welcome: 'Tron Mode failed — no viewer.' }
     }
 
     const scene = viewer.scene
     const globe = scene.globe
     const bloom = scene.postProcessStages.bloom
 
-    // ── Capture pre-activation state ──
+    // ── Save current state ──
 
-    const savedGeoJsonColors = new Map<string, { stroke: string; fill: string }>()
+    const savedGeoJsonColors = new Map<string, { stroke: string; fill: string; width: number }>()
     for (const layer of getAllLayers()) {
-      if (layer.def.kind === 'geojson' && layer.visible) {
+      if (layer.def.kind === 'geojson') {
         const props = getGeoJsonProperties(layer.def.id)
-        if (props) savedGeoJsonColors.set(layer.def.id, { stroke: props.strokeColor, fill: props.fillColor })
+        if (props) savedGeoJsonColors.set(layer.def.id, {
+          stroke: props.strokeColor, fill: props.fillColor, width: props.strokeWidth
+        })
       }
     }
+
+    const bordersLayer = getAllLayers().find(l => l.def.id === 'borders')
+    const coastLayer = getAllLayers().find(l => l.def.id === 'coastlines')
+    const riversLayer = getAllLayers().find(l => l.def.id === 'rivers')
+    const labelsLayer = getAllLayers().find(l => l.def.id === 'labels')
 
     _savedState = {
       baseMap: getBaseMapStyle(),
       bloomEnabled: bloom.enabled,
       bloomUniforms: {
-        glowOnly: bloom.uniforms.glowOnly as boolean,
-        contrast: bloom.uniforms.contrast as number,
-        brightness: bloom.uniforms.brightness as number,
-        delta: bloom.uniforms.delta as number,
-        sigma: bloom.uniforms.sigma as number,
-        stepSize: bloom.uniforms.stepSize as number,
+        glowOnly: bloom.uniforms.glowOnly,
+        contrast: bloom.uniforms.contrast,
+        brightness: bloom.uniforms.brightness,
+        delta: bloom.uniforms.delta,
+        sigma: bloom.uniforms.sigma,
+        stepSize: bloom.uniforms.stepSize,
       },
       globeMaterial: globe.material as Cesium.Material | undefined,
       globeBaseColor: globe.baseColor.clone(),
       showWaterEffect: globe.showWaterEffect,
+      fxaaEnabled: scene.postProcessStages.fxaa.enabled,
       atmosphere: {
         hueShift: scene.atmosphere.hueShift,
         saturationShift: scene.atmosphere.saturationShift,
         brightnessShift: scene.atmosphere.brightnessShift,
       },
+      skyAtmosphere: scene.skyAtmosphere ? {
+        hueShift: scene.skyAtmosphere.hueShift,
+        saturationShift: scene.skyAtmosphere.saturationShift,
+        brightnessShift: scene.skyAtmosphere.brightnessShift,
+      } : null,
       geoJsonColors: savedGeoJsonColors,
-      edgeStage: null,
+      labelsWereVisible: labelsLayer?.visible ?? false,
+      bordersWereVisible: bordersLayer?.visible ?? false,
+      coastlinesWereVisible: coastLayer?.visible ?? false,
+      riversWereVisible: riversLayer?.visible ?? false,
+      glowStage: null,
     }
 
-    // ── Apply Tron visual effects ──
+    // ══════════════════════════════════════════
+    //  APPLY TRON MODE
+    // ══════════════════════════════════════════
 
-    // Black base map — the dark canvas for green lines
+    // 1. Black base map
     await setBaseMapStyle('blank-black')
+    globe.baseColor = Cesium.Color.BLACK
 
-    // Subtle bloom — just enough glow on the green lines, not a green wash
-    bloom.enabled = true
-    bloom.uniforms.glowOnly = false
-    bloom.uniforms.contrast = 20
-    bloom.uniforms.brightness = -0.3
-    bloom.uniforms.delta = 1.2
-    bloom.uniforms.sigma = 3.5
-    bloom.uniforms.stepSize = 0.5
-
-    // Silhouette stage: green edge outlines on terrain and 3D features
-    // Use createSilhouetteStage which composites edge detection with color
-    try {
-      const edgeStage = Cesium.PostProcessStageLibrary.createSilhouetteStage()
-      edgeStage.uniforms.color = Cesium.Color.fromCssColorString(NVIDIA_GREEN_BRIGHT)
-      scene.postProcessStages.add(edgeStage)
-      _savedState.edgeStage = edgeStage
-    } catch {
-      // Silhouette not available in this Cesium version, skip
-      console.warn('[tron-mode] Silhouette stage not available')
-    }
-
-    // Elevation contour lines — thin green lines at elevation intervals
-    globe.material = Cesium.Material.fromType('ElevationContour', {
-      width: 1.5,
-      spacing: 200.0,
-      color: Cesium.Color.fromCssColorString(NVIDIA_GREEN).withAlpha(0.9),
-    })
-
-    // Darken the globe base color to make contour lines pop
-    globe.baseColor = Cesium.Color.fromCssColorString('#050505')
-
-    // Disable water effect — we want the ocean black
+    // 2. Disable water specular (we want pure black oceans)
     globe.showWaterEffect = false
 
-    // Subtle green atmosphere glow — not overpowering
-    scene.atmosphere.hueShift = 0.33
-    scene.atmosphere.saturationShift = -0.3
-    scene.atmosphere.brightnessShift = -0.5
+    // 3. Enable FXAA for anti-aliased lines
+    scene.postProcessStages.fxaa.enabled = true
 
-    // Recolor existing GeoJSON layers — green outlines, no fill (wireframe)
+    // 4. Bloom — soft glow on green elements
+    bloom.enabled = true
+    bloom.uniforms.glowOnly = false
+    bloom.uniforms.contrast = 30
+    bloom.uniforms.brightness = -0.25
+    bloom.uniforms.delta = 1.5
+    bloom.uniforms.sigma = 4.0
+    bloom.uniforms.stepSize = 0.5
+
+    // 5. Green atmosphere glow
+    scene.atmosphere.hueShift = 0.33      // toward green
+    scene.atmosphere.saturationShift = 0.5 // boost saturation
+    scene.atmosphere.brightnessShift = 0.1 // slightly brighter glow
+    if (scene.skyAtmosphere) {
+      scene.skyAtmosphere.hueShift = 0.33
+      scene.skyAtmosphere.saturationShift = 0.5
+      scene.skyAtmosphere.brightnessShift = -0.2
+    }
+
+    // 6. Custom glow ring via post-process shader
+    try {
+      const glowStage = new Cesium.PostProcessStage({
+        fragmentShader: `
+          uniform sampler2D colorTexture;
+          uniform sampler2D depthTexture;
+          in vec2 v_textureCoordinates;
+
+          void main() {
+            vec4 color = texture(colorTexture, v_textureCoordinates);
+            float depth = texture(depthTexture, v_textureCoordinates).r;
+
+            // Detect globe edge: where depth transitions from globe to far plane
+            float isGlobe = depth < 1.0 ? 1.0 : 0.0;
+
+            // Sample neighbors to find edge
+            float texelX = 1.0 / 1920.0;
+            float texelY = 1.0 / 1080.0;
+            float edgeSum = 0.0;
+            for (int dx = -3; dx <= 3; dx++) {
+              for (int dy = -3; dy <= 3; dy++) {
+                float nd = texture(depthTexture, v_textureCoordinates + vec2(float(dx) * texelX, float(dy) * texelY)).r;
+                float nGlobe = nd < 1.0 ? 1.0 : 0.0;
+                edgeSum += abs(nGlobe - isGlobe);
+              }
+            }
+
+            // Wider glow via distance from edge
+            float edge = min(edgeSum / 10.0, 1.0);
+
+            // Add outer glow: sample further out
+            float outerGlow = 0.0;
+            for (int r = 4; r <= 12; r++) {
+              for (int a = 0; a < 8; a++) {
+                float angle = float(a) * 0.785398; // pi/4
+                vec2 offset = vec2(cos(angle), sin(angle)) * float(r);
+                float nd = texture(depthTexture, v_textureCoordinates + offset * vec2(texelX, texelY)).r;
+                float nGlobe = nd < 1.0 ? 1.0 : 0.0;
+                outerGlow += abs(nGlobe - isGlobe);
+              }
+            }
+            outerGlow = min(outerGlow / 30.0, 1.0);
+
+            // NVIDIA green glow
+            vec3 glowColor = vec3(0.463, 0.725, 0.0); // #76B900
+            float glowIntensity = max(edge * 1.5, outerGlow * 0.6);
+
+            out_FragColor = vec4(color.rgb + glowColor * glowIntensity, color.a);
+          }
+        `,
+      })
+      scene.postProcessStages.add(glowStage)
+      _savedState.glowStage = glowStage
+      console.log('[tron-mode] Custom glow shader added')
+    } catch (e) {
+      console.warn('[tron-mode] Custom glow shader failed:', e)
+    }
+
+    // 7. Elevation contour lines on terrain
+    globe.material = Cesium.Material.fromType('ElevationContour', {
+      width: 1.5,
+      spacing: 150.0,
+      color: Cesium.Color.fromCssColorString(NVIDIA_GREEN).withAlpha(0.7),
+    })
+
+    // 8. Show borders + coastlines + rivers in green wireframe
+    await showLayer('borders')
+    await showLayer('coastlines')
+    await showLayer('rivers')
+
     for (const layer of getAllLayers()) {
-      if (layer.def.kind === 'geojson' && layer.visible) {
+      if (layer.def.kind === 'geojson') {
         setGeoJsonProperty(layer.def.id, 'strokeColor', NVIDIA_GREEN)
         setGeoJsonProperty(layer.def.id, 'fillColor', 'transparent')
+        setGeoJsonProperty(layer.def.id, 'strokeWidth', 1.5)
       }
     }
 
-    // ── Return commands ──
+    // 9. Show labels (they'll render as white text on dark bg — still readable)
+    await showLayer('labels')
+    // Tint labels layer green
+    const labelsLive = getAllLayers().find(l => l.def.id === 'labels')
+    if (labelsLive?.imageryLayer) {
+      labelsLive.imageryLayer.hue = 1.9  // shift white/gray labels toward green
+      labelsLive.imageryLayer.saturation = 3.0
+      labelsLive.imageryLayer.brightness = 0.8
+    }
+
+    console.log('[tron-mode] Activated')
 
     return {
       commands: [
@@ -168,7 +257,7 @@ const extension: Extension = {
           category: 'view',
         },
       ],
-      welcome: 'TRON mode active — NVIDIA green contour lines, bloom, edge glow.',
+      welcome: 'TRON mode active — green wireframe, neon glow, cyberpunk globe.',
     }
   },
 
@@ -185,42 +274,61 @@ const extension: Extension = {
     const globe = scene.globe
     const bloom = scene.postProcessStages.bloom
 
-    // Remove edge detection stage
-    if (_savedState.edgeStage) {
-      scene.postProcessStages.remove(_savedState.edgeStage)
+    // Remove custom glow shader
+    if (_savedState.glowStage) {
+      try { scene.postProcessStages.remove(_savedState.glowStage) } catch {}
     }
 
     // Restore bloom
     bloom.enabled = _savedState.bloomEnabled
-    bloom.uniforms.glowOnly = _savedState.bloomUniforms.glowOnly
-    bloom.uniforms.contrast = _savedState.bloomUniforms.contrast
-    bloom.uniforms.brightness = _savedState.bloomUniforms.brightness
-    bloom.uniforms.delta = _savedState.bloomUniforms.delta
-    bloom.uniforms.sigma = _savedState.bloomUniforms.sigma
-    bloom.uniforms.stepSize = _savedState.bloomUniforms.stepSize
+    for (const [k, v] of Object.entries(_savedState.bloomUniforms)) {
+      bloom.uniforms[k] = v
+    }
 
-    // Restore globe material and base color
+    // Restore globe
     globe.material = _savedState.globeMaterial as unknown as Cesium.Material
     globe.baseColor = _savedState.globeBaseColor
-
-    // Restore water effect
     globe.showWaterEffect = _savedState.showWaterEffect
+
+    // Restore FXAA
+    scene.postProcessStages.fxaa.enabled = _savedState.fxaaEnabled
 
     // Restore atmosphere
     scene.atmosphere.hueShift = _savedState.atmosphere.hueShift
     scene.atmosphere.saturationShift = _savedState.atmosphere.saturationShift
     scene.atmosphere.brightnessShift = _savedState.atmosphere.brightnessShift
+    if (scene.skyAtmosphere && _savedState.skyAtmosphere) {
+      scene.skyAtmosphere.hueShift = _savedState.skyAtmosphere.hueShift
+      scene.skyAtmosphere.saturationShift = _savedState.skyAtmosphere.saturationShift
+      scene.skyAtmosphere.brightnessShift = _savedState.skyAtmosphere.brightnessShift
+    }
 
-    // Restore base map (async, fire-and-forget)
-    setBaseMapStyle(_savedState.baseMap as BaseMapStyle)
-
-    // Restore GeoJSON stroke and fill colors
+    // Restore GeoJSON colors
     for (const [id, saved] of _savedState.geoJsonColors) {
       setGeoJsonProperty(id, 'strokeColor', saved.stroke)
       setGeoJsonProperty(id, 'fillColor', saved.fill)
+      setGeoJsonProperty(id, 'strokeWidth', saved.width)
     }
 
+    // Restore layer visibility
+    if (!_savedState.bordersWereVisible) hideLayer('borders')
+    if (!_savedState.coastlinesWereVisible) hideLayer('coastlines')
+    if (!_savedState.riversWereVisible) hideLayer('rivers')
+    if (!_savedState.labelsWereVisible) hideLayer('labels')
+
+    // Reset labels tint
+    const labelsLive = getAllLayers().find(l => l.def.id === 'labels')
+    if (labelsLive?.imageryLayer) {
+      labelsLive.imageryLayer.hue = 0
+      labelsLive.imageryLayer.saturation = 1.0
+      labelsLive.imageryLayer.brightness = 1.0
+    }
+
+    // Restore base map
+    setBaseMapStyle(_savedState.baseMap as BaseMapStyle)
+
     _savedState = null
+    console.log('[tron-mode] Deactivated')
   },
 }
 
