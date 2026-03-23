@@ -540,6 +540,16 @@ export function getGeoJsonProperties(id: string): GeoJsonProperties | undefined 
   return _layers.get(id)?.geoJsonProperties
 }
 
+/** Toggle entity clustering on a GeoJSON layer. Returns false for non-GeoJSON layers. */
+export function setLayerClustering(id: string, enabled: boolean): boolean {
+  const layer = _layers.get(id)
+  if (!layer || !layer.datasource) return false
+  layer.datasource.clustering.enabled = enabled
+  layer.clusteringEnabled = enabled
+  notifyUI()
+  return true
+}
+
 // ── Internal loaders ──
 
 async function loadGeoJson(layer: LiveLayer, viewer: Cesium.Viewer): Promise<void> {
@@ -596,6 +606,33 @@ async function loadGeoJson(layer: LiveLayer, viewer: Cesium.Viewer): Promise<voi
   if (def.styleEntities) {
     def.styleEntities(ds.entities)
   }
+
+  // Enable entity clustering for performance with dense point layers
+  ds.clustering.enabled = true
+  ds.clustering.pixelRange = 45
+  ds.clustering.minimumClusterSize = 3
+  ds.clustering.clusterBillboards = true
+  ds.clustering.clusterLabels = true
+  ds.clustering.clusterPoints = true
+
+  // Style cluster labels to show entity count
+  ds.clustering.clusterEvent.addEventListener(
+    (clusteredEntities: Cesium.Entity[], cluster: { billboard: Cesium.Billboard; label: Cesium.Label; point: Cesium.PointPrimitive }) => {
+      cluster.label.show = true
+      cluster.label.text = clusteredEntities.length.toString()
+      cluster.label.font = '14px sans-serif'
+      cluster.label.fillColor = Cesium.Color.WHITE
+      cluster.label.outlineColor = Cesium.Color.BLACK
+      cluster.label.outlineWidth = 2
+      cluster.label.style = Cesium.LabelStyle.FILL_AND_OUTLINE
+      cluster.label.verticalOrigin = Cesium.VerticalOrigin.CENTER
+      cluster.label.horizontalOrigin = Cesium.HorizontalOrigin.CENTER
+      cluster.billboard.show = false
+      cluster.point.show = false
+    }
+  )
+
+  layer.clusteringEnabled = true
 
   viewer.dataSources.add(ds)
   layer.datasource = ds

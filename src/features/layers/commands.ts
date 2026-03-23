@@ -8,7 +8,7 @@
  */
 
 import type { CommandEntry } from '@/ai/types'
-import { getAllLayers, toggleLayer, showLayer, hideLayer, getLayerProperties, setLayerProperty, resetLayerProperties, setGeoJsonProperty, getGeoJsonProperties } from './manager'
+import { getAllLayers, toggleLayer, showLayer, hideLayer, getLayerProperties, setLayerProperty, resetLayerProperties, setGeoJsonProperty, getGeoJsonProperties, setLayerClustering } from './manager'
 import type { LiveLayer } from './types'
 import { playPing } from '@/audio/sounds'
 
@@ -395,6 +395,7 @@ const layerPropertiesCmd: CommandEntry = {
         `- Stroke Color: ${gjProps.strokeColor}`,
         `- Stroke Width: ${gjProps.strokeWidth}px`,
         `- Opacity: ${Math.round(gjProps.alpha * 100)}%`,
+        `- Clustering: ${match.clusteringEnabled ? 'on' : 'off'}`,
       ].join('\n')
     }
 
@@ -541,6 +542,60 @@ const setStrokeWidthCmd: CommandEntry = {
   },
 }
 
+// ── Set layer clustering ──
+
+const setClusteringCmd: CommandEntry = {
+  id: 'layers:set-clustering',
+  name: 'Set layer clustering',
+  module: 'layers',
+  category: 'data',
+  description: 'Enable or disable entity clustering on a GeoJSON layer. Clustering groups nearby points into a single labeled cluster for better performance and readability.',
+  patterns: [
+    'cluster {layer}',
+    'uncluster {layer}',
+    'set {layer} clustering {action}',
+    'toggle clustering on {layer}',
+    'enable clustering on {layer}',
+    'disable clustering on {layer}',
+  ],
+  params: [
+    { name: 'layer', type: 'string', required: true, description: 'Layer name or id' },
+    { name: 'action', type: 'enum', required: false, description: 'Whether to enable, disable, or toggle clustering', options: ['on', 'off', 'toggle'] },
+  ],
+  handler: (params) => {
+    const raw = String(params._raw ?? '').toLowerCase()
+    const input = String(params.layer ?? '').toLowerCase().trim()
+
+    const match = resolveLayer(input)
+    if (!match) {
+      const available = getAllLayers().map(l => l.def.name).join(', ')
+      return `Unknown layer "${input}". Available: ${available}`
+    }
+
+    if (match.def.kind !== 'geojson') {
+      return `Cannot set clustering on "${match.def.name}" — only GeoJSON layers support clustering.`
+    }
+
+    // Determine intent
+    const action = String(params.action ?? '').toLowerCase()
+    let enabled: boolean
+    if (action === 'on' || raw.includes('enable') || raw.startsWith('cluster ')) {
+      enabled = true
+    } else if (action === 'off' || raw.includes('disable') || raw.startsWith('uncluster')) {
+      enabled = false
+    } else {
+      // Toggle
+      enabled = !match.clusteringEnabled
+    }
+
+    const ok = setLayerClustering(match.def.id, enabled)
+    if (!ok) return `Cannot set clustering on "${match.def.name}" — layer has no loaded datasource. Show the layer first.`
+
+    playPing()
+    return `${match.def.name} clustering ${enabled ? 'enabled' : 'disabled'}`
+  },
+}
+
 export const layerCommands: CommandEntry[] = [
   toggleLayerCmd,
   listLayersCmd,
@@ -553,4 +608,5 @@ export const layerCommands: CommandEntry[] = [
   setStrokeWidthCmd,
   layerPropertiesCmd,
   resetLayerCmd,
+  setClusteringCmd,
 ]
