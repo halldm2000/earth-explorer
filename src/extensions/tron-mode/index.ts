@@ -72,8 +72,6 @@ const extension: Extension = {
     const bordersLayer = getAllLayers().find(l => l.def.id === 'borders')
     const coastLayer = getAllLayers().find(l => l.def.id === 'coastlines')
     const riversLayer = getAllLayers().find(l => l.def.id === 'rivers')
-    const labelsLayer = getAllLayers().find(l => l.def.id === 'labels')
-
     _savedState = {
       baseMap: getBaseMapStyle(),
       bloomEnabled: bloom.enabled,
@@ -100,7 +98,7 @@ const extension: Extension = {
         brightnessShift: scene.skyAtmosphere.brightnessShift,
       } : null,
       geoJsonColors: savedGeoJsonColors,
-      labelsWereVisible: labelsLayer?.visible ?? false,
+      labelsWereVisible: false,
       bordersWereVisible: bordersLayer?.visible ?? false,
       coastlinesWereVisible: coastLayer?.visible ?? false,
       riversWereVisible: riversLayer?.visible ?? false,
@@ -198,12 +196,7 @@ const extension: Extension = {
       console.warn('[tron-mode] Custom glow shader failed:', e)
     }
 
-    // 7. Elevation contour lines on terrain
-    globe.material = Cesium.Material.fromType('ElevationContour', {
-      width: 1.5,
-      spacing: 150.0,
-      color: Cesium.Color.fromCssColorString(NVIDIA_GREEN).withAlpha(0.7),
-    })
+    // 7. No elevation contour lines — the green borders/coastlines are the wireframe
 
     // 8. Show borders + coastlines + rivers in green wireframe
     await showLayer('borders')
@@ -214,19 +207,13 @@ const extension: Extension = {
       if (layer.def.kind === 'geojson') {
         setGeoJsonProperty(layer.def.id, 'strokeColor', NVIDIA_GREEN)
         setGeoJsonProperty(layer.def.id, 'fillColor', 'transparent')
-        setGeoJsonProperty(layer.def.id, 'strokeWidth', 1.5)
+        setGeoJsonProperty(layer.def.id, 'strokeWidth', 2.0)
       }
     }
 
-    // 9. Show labels (they'll render as white text on dark bg — still readable)
-    await showLayer('labels')
-    // Tint labels layer green
-    const labelsLive = getAllLayers().find(l => l.def.id === 'labels')
-    if (labelsLive?.imageryLayer) {
-      labelsLive.imageryLayer.hue = 1.9  // shift white/gray labels toward green
-      labelsLive.imageryLayer.saturation = 3.0
-      labelsLive.imageryLayer.brightness = 0.8
-    }
+    // 9. Labels — don't show the imagery-based labels layer (causes 404s
+    // and renders as white text). Country names are already visible via
+    // the Cesium default label renderer when borders are on.
 
     console.log('[tron-mode] Activated')
 
@@ -315,14 +302,6 @@ const extension: Extension = {
     if (!_savedState.coastlinesWereVisible) hideLayer('coastlines')
     if (!_savedState.riversWereVisible) hideLayer('rivers')
     if (!_savedState.labelsWereVisible) hideLayer('labels')
-
-    // Reset labels tint
-    const labelsLive = getAllLayers().find(l => l.def.id === 'labels')
-    if (labelsLive?.imageryLayer) {
-      labelsLive.imageryLayer.hue = 0
-      labelsLive.imageryLayer.saturation = 1.0
-      labelsLive.imageryLayer.brightness = 1.0
-    }
 
     // Restore base map
     setBaseMapStyle(_savedState.baseMap as BaseMapStyle)
