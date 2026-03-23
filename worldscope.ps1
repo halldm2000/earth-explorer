@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Worldscope Launcher — starts dev server + MCP server in one command
+# Worldscope Launcher -starts dev server + MCP server in one command
 # Usage: .\worldscope.ps1 [start|stop|status]
 
 param(
@@ -13,10 +13,10 @@ if (-not $projectRoot) { $projectRoot = Get-Location }
 
 function Write-Banner {
   Write-Host ""
-  Write-Host "  ╔══════════════════════════════════════╗" -ForegroundColor Cyan
-  Write-Host "  ║          W O R L D S C O P E         ║" -ForegroundColor Cyan
-  Write-Host "  ║     3D Globe Visualization Platform   ║" -ForegroundColor DarkCyan
-  Write-Host "  ╚══════════════════════════════════════╝" -ForegroundColor Cyan
+  Write-Host "  ========================================" -ForegroundColor Cyan
+  Write-Host "           W O R L D S C O P E           " -ForegroundColor Cyan
+  Write-Host "     3D Globe Visualization Platform      " -ForegroundColor DarkCyan
+  Write-Host "  ========================================" -ForegroundColor Cyan
   Write-Host ""
 }
 
@@ -57,15 +57,15 @@ function Start-Worldscope {
   Start-Sleep -Seconds 2
 
   Write-Host ""
-  Write-Host "  ✓ Dev server:  http://localhost:5173" -ForegroundColor Green
-  Write-Host "  ✓ MCP server:  http://localhost:3002/mcp" -ForegroundColor Green
+  Write-Host "  [OK] Dev server:  http://localhost:5173" -ForegroundColor Green
+  Write-Host "  [OK] MCP server:  http://localhost:3002/mcp" -ForegroundColor Green
   Write-Host ""
   Write-Host "  Keyboard shortcuts:" -ForegroundColor DarkGray
-  Write-Host "    1/2/3  — 2.5D / 2D / 3D view" -ForegroundColor DarkGray
-  Write-Host "    P      — presentation mode" -ForegroundColor DarkGray
-  Write-Host "    R      — reset camera" -ForegroundColor DarkGray
-  Write-Host "    X      — extension catalog" -ForegroundColor DarkGray
-  Write-Host "    L      — layer panel" -ForegroundColor DarkGray
+  Write-Host "    1/2/3  -2.5D / 2D / 3D view" -ForegroundColor DarkGray
+  Write-Host "    P      -presentation mode" -ForegroundColor DarkGray
+  Write-Host "    R      -reset camera" -ForegroundColor DarkGray
+  Write-Host "    X      -extension catalog" -ForegroundColor DarkGray
+  Write-Host "    L      -layer panel" -ForegroundColor DarkGray
   Write-Host ""
   Write-Host "  Press Ctrl+C to stop" -ForegroundColor Yellow
   Write-Host ""
@@ -88,7 +88,7 @@ function Start-Worldscope {
     Stop-Job -Job $mcpJob -ErrorAction SilentlyContinue
     Remove-Job -Job $devJob -ErrorAction SilentlyContinue
     Remove-Job -Job $mcpJob -ErrorAction SilentlyContinue
-    Write-Host "  ✓ Worldscope stopped" -ForegroundColor Green
+    Write-Host "  [OK] Worldscope stopped" -ForegroundColor Green
   }
 }
 
