@@ -10,9 +10,10 @@ const HOME = { lon: 10, lat: 30, height: 20_000_000, heading: 0, pitch: -90 }
 // ── Scene toggle state (exported for Toolbar) ──
 let _lighting = true
 let _atmosphere = true
+let _water = true
 const _sceneListeners = new Set<() => void>()
 function notifyScene() { for (const fn of _sceneListeners) fn() }
-export function getSceneToggles() { return { lighting: _lighting, atmosphere: _atmosphere } }
+export function getSceneToggles() { return { lighting: _lighting, atmosphere: _atmosphere, water: _water } }
 export function subscribeScene(fn: () => void): () => void {
   _sceneListeners.add(fn)
   return () => _sceneListeners.delete(fn)
@@ -23,6 +24,13 @@ export function toggleSceneLighting(): void {
   const on = !viewer.scene.globe.enableLighting
   viewer.scene.globe.enableLighting = on
   _lighting = on; notifyScene()
+}
+export function toggleSceneWater(): void {
+  const viewer = getViewer()
+  if (!viewer) return
+  const on = !viewer.scene.globe.showWaterEffect
+  viewer.scene.globe.showWaterEffect = on
+  _water = on; notifyScene()
 }
 export function toggleSceneAtmosphere(): void {
   const viewer = getViewer()
@@ -71,7 +79,9 @@ export function CesiumViewer() {
       // Terrain — standard Cesium World Terrain (asset 1)
       // NOTE: Bathymetry (asset 2426648) also available if added to Ion account from Asset Depot
       try {
-        viewer.scene.terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(1)
+        viewer.scene.terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(1, {
+          requestWaterMask: true,
+        })
       } catch (e) { console.warn('Terrain init failed:', e) }
       if (disposed) return
 
@@ -105,6 +115,8 @@ export function CesiumViewer() {
       if (scene.skyAtmosphere) scene.skyAtmosphere.show = true
       scene.globe.baseColor = Cesium.Color.fromCssColorString('#0a0c12')
       scene.globe.depthTestAgainstTerrain = true
+      scene.globe.showWaterEffect = true
+      scene.globe.oceanNormalMapUrl = Cesium.buildModuleUrl('Assets/Textures/waterNormals.jpg')
 
       // Apply quality preset (shadows, bloom, AO, FXAA, resolution scale)
       const initialPreset = useStore.getState().qualityPreset

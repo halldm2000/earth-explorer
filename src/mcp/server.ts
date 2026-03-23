@@ -250,6 +250,7 @@ Worldscope is an interactive 3D globe for visualizing Earth data. You control it
 - core_toggle-terrain — Toggle 3D terrain
 - core_toggle-buildings — Toggle 3D buildings
 - core_toggle-lighting — Toggle day/night shading
+- core_toggle-water — Toggle animated ocean water effects
 
 ## Tips
 - Use query_screenshot after making changes to see the result.
