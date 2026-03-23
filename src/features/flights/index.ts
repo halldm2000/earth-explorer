@@ -504,8 +504,8 @@ function makeCommands(ctx: AppContext): CommandEntry[] {
     category: 'feature',
     description: 'Toggle entity clustering on the flight tracker. Groups nearby aircraft into labeled clusters.',
     patterns: [
-      'cluster flights', 'uncluster flights',
-      'toggle flight clustering', 'group flights',
+      'cluster flights', 'uncluster flights', 'disperse flights',
+      'toggle flight clustering', 'group flights', 'spread flights',
       'flights clustering on', 'flights clustering off',
     ],
     params: [
@@ -519,7 +519,7 @@ function makeCommands(ctx: AppContext): CommandEntry[] {
       let enabled: boolean
       if (action === 'on' || raw.includes('cluster flights') || raw.includes('clustering on') || raw.includes('group')) {
         enabled = true
-      } else if (action === 'off' || raw.includes('uncluster') || raw.includes('clustering off')) {
+      } else if (action === 'off' || raw.includes('uncluster') || raw.includes('disperse') || raw.includes('spread') || raw.includes('clustering off')) {
         enabled = false
       } else {
         enabled = !_dataSource.clustering.enabled

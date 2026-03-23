@@ -1032,7 +1032,9 @@ function makeCommands(ctx: AppContext): CommandEntry[] {
     category: 'feature',
     description: 'Toggle entity clustering on the satellite tracker. Groups nearby satellites into labeled clusters.',
     patterns: [
-      'cluster satellites', 'cluster sats', 'spread satellites', 'spread sats',
+      'cluster satellites', 'cluster sats',
+      'disperse satellites', 'disperse sats', 'spread satellites', 'spread sats',
+      'uncluster satellites', 'uncluster sats',
       'toggle satellite clustering', 'group satellites',
       'satellite clustering on', 'satellite clustering off',
     ],
@@ -1047,7 +1049,7 @@ function makeCommands(ctx: AppContext): CommandEntry[] {
       let enabled: boolean
       if (action === 'on' || raw.includes('cluster') && !raw.includes('spread')) {
         enabled = true
-      } else if (action === 'off' || raw.includes('spread')) {
+      } else if (action === 'off' || raw.includes('spread') || raw.includes('disperse') || raw.includes('uncluster')) {
         enabled = false
       } else {
         enabled = !_dataSource.clustering.enabled
