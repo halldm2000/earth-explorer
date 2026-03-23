@@ -94,7 +94,16 @@ Feature modules that register with the app manager. Each app can add layers, com
 - **Terrain Providers** — Switch between terrain sources: Cesium World, Mapbox, custom quantized mesh, flat ellipsoid *(planned)*
 
 ### Climate & Weather
-- **Weather Overlay** — Temperature, wind, precipitation from GFS/ERA5 *(planned)*
+- **Weather App (Windy-style)** — Full weather visualization mode inspired by Windy.com. Components: *(planned)*
+  - **Animated wind particles** — GPU-accelerated particle flow showing wind speed/direction on the globe surface, colored by velocity
+  - **Scalar field colormaps** — Temperature, pressure, humidity, precipitation mapped to perceptually uniform colormaps as globe imagery overlays
+  - **Multiple weather models** — GFS (NOAA), ECMWF (IFS/HRES), ICON (DWD), and NVIDIA Earth-2 AI models (FourCastNet, StormCast)
+  - **Layer selector** — Switch between: wind, temperature, rain/thunder, clouds, pressure, waves, precipitation accumulation, thunderstorms, snow, cape/lifted index
+  - **Forecast timeline** — Scrub through forecast hours (0-384h), play/pause animation, step forward/back
+  - **Point forecast** — Click any location to see a multi-day forecast chart (temp, wind, precip time series)
+  - **Altitude levels** — View weather at surface, 850hPa, 500hPa, 300hPa, 200hPa (jet stream)
+  - **Sounding profiles** — Vertical temperature/dewpoint profiles at clicked locations
+  - **Data sources** — Open-Meteo API (free, global), NOAA GFS via NOMADS, ECMWF open data, ERA5 reanalysis for historical
 - **Climate Projections** — CMIP6 model outputs, warming scenarios *(planned)*
 - **Sea Level Rise** — Coastal inundation under different rise scenarios *(planned)* — `exclusiveGroup: simulation`
 - **Ice Sheet Monitor** — Arctic/Antarctic ice extent, historical trends *(planned)*
