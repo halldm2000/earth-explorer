@@ -78,6 +78,7 @@ Set-Content -Path 'node_modules' -Stream com.dropbox.ignored -Value 1
 - **Every data display has units and a legend.** No orphaned colors.
 - **No secrets in client code.** API tokens are in `.env` (Vite injects them at build time).
 - **Frame budget: 16ms.** Nothing blocks Cesium's render loop.
+- **Enable entity clustering on all GeoJSON DataSources.** Use `EntityCluster` with `pixelRange=45`, `minimumClusterSize=3` to prevent UI lockup with dense point data (ships, flights, earthquakes). Clustering is configured automatically in `loadGeoJson()` — new GeoJSON layers get it for free.
 
 ## Quality Standards
 
