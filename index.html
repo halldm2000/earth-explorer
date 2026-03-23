@@ -4,6 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Worldscope</title>
+    <style>
+      /* Presentation mode: hide all UI chrome, show only the globe */
+      .presentation-mode > div > *:not([data-cesium]) { display: none !important; }
+      .presentation-mode [data-globe-overlay] { display: none !important; }
+    </style>
   </head>
   <body>
     <div id="root"></div>

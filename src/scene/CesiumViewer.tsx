@@ -3,6 +3,7 @@ import * as Cesium from 'cesium'
 import { useStore } from '@/store'
 import { getViewer, setViewer, setBuildingTilesets, hideAllBuildings, restoreBuildings, updateBuildingMode, applyQualityPreset } from './engine'
 import { playRumble } from '@/audio/sounds'
+import { togglePresentationMode, isPresentationMode } from '@/ai/core-commands'
 
 const MAX_ALTITUDE = 40_000_000 // 40,000 km — enough to see full globe in any aspect ratio
 const HOME = { lon: 10, lat: 30, height: 20_000_000, heading: 0, pitch: -90 }
@@ -268,6 +269,22 @@ function setupKeyboard(viewer: Cesium.Viewer) {
     if (key === '3' && !e.metaKey && !e.ctrlKey && !e.altKey) {
       viewer.scene.morphTo3D(1.0)
       restoreBuildings()
+    }
+
+    // P = toggle presentation mode (no modifiers, not in text input)
+    if (key === 'p' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+      togglePresentationMode()
+    }
+
+    // F11 = toggle presentation mode (prevent browser fullscreen)
+    if (e.key === 'F11') {
+      e.preventDefault()
+      togglePresentationMode()
+    }
+
+    // Escape = exit presentation mode (only when active)
+    if (e.key === 'Escape' && isPresentationMode()) {
+      togglePresentationMode()
     }
   })
 

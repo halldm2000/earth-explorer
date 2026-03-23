@@ -14,6 +14,23 @@ import {
 import { toggleMute, isMuted, playRumble } from '@/audio/sounds'
 import { toggleSceneShadows } from '@/scene/CesiumViewer'
 
+// --- Presentation mode state ---
+
+let presentationMode = false
+
+export function isPresentationMode(): boolean {
+  return presentationMode
+}
+
+export function togglePresentationMode(): boolean {
+  presentationMode = !presentationMode
+  const root = document.getElementById('root')
+  if (root) {
+    root.classList.toggle('presentation-mode', presentationMode)
+  }
+  return presentationMode
+}
+
 // --- Helpers ---
 
 /**
@@ -1471,6 +1488,23 @@ const wireframe: CommandEntry = {
   },
 }
 
+const presentationModeCmd: CommandEntry = {
+  id: 'core:presentation-mode',
+  name: 'Toggle presentation mode',
+  module: 'core',
+  category: 'view',
+  description: 'Hide all UI chrome for a clean globe view (screenshot/presentation mode)',
+  patterns: [
+    'presentation mode', 'screenshot mode', 'hide ui', 'hide chrome',
+    'clean view', 'toggle presentation', 'cinema mode',
+  ],
+  params: [],
+  handler: () => {
+    const active = togglePresentationMode()
+    return active ? 'Presentation mode ON — press Escape or P to restore UI' : 'Presentation mode OFF'
+  },
+}
+
 /** All core commands */
 export const coreCommands: CommandEntry[] = [
   goTo, resetView, zoomIn, zoomOut, zoomTo, faceDirection, lookAt, orbit,
@@ -1482,4 +1516,5 @@ export const coreCommands: CommandEntry[] = [
   playbackCmd, stepForwardCmd, stepBackCmd, getDateCmd, setDateCmd,
   setGlow, resetGlow,
   wireframe,
+  presentationModeCmd,
 ]
