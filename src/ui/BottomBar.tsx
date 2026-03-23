@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { StatusStrip, type CameraStatus } from '@/ui/StatusStrip'
 import { GlobalControls } from '@/ui/GlobalControls'
+import { ViewModeSwitcher } from '@/ui/ViewModeSwitcher'
 import { AppDock } from '@/ui/AppDock'
 import { getViewer } from '@/scene/engine'
 import * as Cesium from 'cesium'
@@ -54,6 +55,11 @@ export function BottomBar() {
         <GlobalControls />
       </div>
 
+      {/* View mode switcher: to the right of GlobalControls */}
+      <div style={viewModeSwitcherStyle}>
+        <ViewModeSwitcher />
+      </div>
+
       {/* App dock: centered horizontally, above status strip */}
       <div style={appDockStyle}>
         <AppDock />
@@ -80,6 +86,13 @@ const globalControlsStyle: React.CSSProperties = {
   position: 'absolute',
   bottom: 40,
   left: 12,
+  pointerEvents: 'auto',
+}
+
+const viewModeSwitcherStyle: React.CSSProperties = {
+  position: 'absolute',
+  bottom: 40,
+  left: 60,
   pointerEvents: 'auto',
 }
 
