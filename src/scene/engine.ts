@@ -60,6 +60,20 @@ export function setAutoSwitch(enabled: boolean): void {
   _autoSwitch = enabled
 }
 
+/** Hide all 3D building tilesets (for 2D/Columbus modes where they crash) */
+export function hideAllBuildings(): void {
+  if (_osmTileset) _osmTileset.show = false
+  if (_photoTileset) _photoTileset.show = false
+  if (_viewer) _viewer.scene.globe.show = true
+  _autoSwitch = false
+}
+
+/** Restore buildings to current mode (call when returning to 3D) */
+export function restoreBuildings(): void {
+  _autoSwitch = true
+  setBuildingMode(_buildingMode)
+}
+
 /** Base maps where photorealistic buildings make visual sense */
 const PHOTO_COMPATIBLE_MAPS: Set<BaseMapStyle> = new Set(['default', 'satellite'])
 
