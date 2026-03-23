@@ -20,6 +20,7 @@ interface SavedState {
     stepSize: number
   }
   globeMaterial: Cesium.Material | undefined
+  globeBaseColor: Cesium.Color
   showWaterEffect: boolean
   atmosphere: {
     hueShift: number
@@ -75,6 +76,7 @@ const extension: Extension = {
         stepSize: bloom.uniforms.stepSize as number,
       },
       globeMaterial: globe.material as Cesium.Material | undefined,
+      globeBaseColor: globe.baseColor.clone(),
       showWaterEffect: globe.showWaterEffect,
       atmosphere: {
         hueShift: scene.atmosphere.hueShift,
@@ -87,38 +89,47 @@ const extension: Extension = {
 
     // ── Apply Tron visual effects ──
 
-    // Black base map
+    // Black base map — the dark canvas for green lines
     await setBaseMapStyle('blank-black')
 
-    // Bloom
+    // Subtle bloom — just enough glow on the green lines, not a green wash
     bloom.enabled = true
     bloom.uniforms.glowOnly = false
-    bloom.uniforms.contrast = 128
-    bloom.uniforms.brightness = -0.2
-    bloom.uniforms.delta = 1.0
-    bloom.uniforms.sigma = 2.0
-    bloom.uniforms.stepSize = 1.0
+    bloom.uniforms.contrast = 20
+    bloom.uniforms.brightness = -0.3
+    bloom.uniforms.delta = 1.2
+    bloom.uniforms.sigma = 3.5
+    bloom.uniforms.stepSize = 0.5
 
-    // Edge detection with bright green
-    const edgeStage = Cesium.PostProcessStageLibrary.createEdgeDetectionStage()
-    edgeStage.uniforms.color = Cesium.Color.fromCssColorString(NVIDIA_GREEN_BRIGHT)
-    scene.postProcessStages.add(edgeStage)
-    _savedState.edgeStage = edgeStage
+    // Silhouette stage: green edge outlines on terrain and 3D features
+    // Use createSilhouetteStage which composites edge detection with color
+    try {
+      const edgeStage = Cesium.PostProcessStageLibrary.createSilhouetteStage()
+      edgeStage.uniforms.color = Cesium.Color.fromCssColorString(NVIDIA_GREEN_BRIGHT)
+      scene.postProcessStages.add(edgeStage)
+      _savedState.edgeStage = edgeStage
+    } catch {
+      // Silhouette not available in this Cesium version, skip
+      console.warn('[tron-mode] Silhouette stage not available')
+    }
 
-    // Elevation contour material
+    // Elevation contour lines — thin green lines at elevation intervals
     globe.material = Cesium.Material.fromType('ElevationContour', {
-      width: 2.0,
-      spacing: 500.0,
-      color: Cesium.Color.fromCssColorString(NVIDIA_GREEN),
+      width: 1.5,
+      spacing: 200.0,
+      color: Cesium.Color.fromCssColorString(NVIDIA_GREEN).withAlpha(0.9),
     })
 
-    // Disable water effect
+    // Darken the globe base color to make contour lines pop
+    globe.baseColor = Cesium.Color.fromCssColorString('#050505')
+
+    // Disable water effect — we want the ocean black
     globe.showWaterEffect = false
 
-    // Green-tinted atmosphere
+    // Subtle green atmosphere glow — not overpowering
     scene.atmosphere.hueShift = 0.33
-    scene.atmosphere.saturationShift = 0.2
-    scene.atmosphere.brightnessShift = -0.3
+    scene.atmosphere.saturationShift = -0.3
+    scene.atmosphere.brightnessShift = -0.5
 
     // Recolor existing GeoJSON layers
     for (const layer of getAllLayers()) {
@@ -187,8 +198,9 @@ const extension: Extension = {
     bloom.uniforms.sigma = _savedState.bloomUniforms.sigma
     bloom.uniforms.stepSize = _savedState.bloomUniforms.stepSize
 
-    // Restore globe material
+    // Restore globe material and base color
     globe.material = _savedState.globeMaterial as unknown as Cesium.Material
+    globe.baseColor = _savedState.globeBaseColor
 
     // Restore water effect
     globe.showWaterEffect = _savedState.showWaterEffect
