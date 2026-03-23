@@ -1230,6 +1230,105 @@ const setDateCmd: CommandEntry = {
   },
 }
 
+// --- Atmosphere glow helpers ---
+
+/** Convert CSS color string to Cesium hueShift value (-0.5 to 0.5) */
+function cssColorToHueShift(color: string): number | null {
+  const c = Cesium.Color.fromCssColorString(color)
+  if (!c) return null
+  const r = c.red, g = c.green, b = c.blue
+  const max = Math.max(r, g, b), min = Math.min(r, g, b)
+  if (max === min) return 0 // achromatic — no meaningful hue
+  let hue = 0
+  const d = max - min
+  if (max === r) hue = ((g - b) / d + (g < b ? 6 : 0)) / 6
+  else if (max === g) hue = ((b - r) / d + 2) / 6
+  else hue = ((r - g) / d + 4) / 6
+  // Map to Cesium's relative hue shift from default atmosphere blue (~216°)
+  const defaultHue01 = 0.6
+  let shift = hue - defaultHue01
+  if (shift > 0.5) shift -= 1.0
+  if (shift < -0.5) shift += 1.0
+  return shift
+}
+
+// --- Atmosphere glow commands ---
+
+const setGlow: CommandEntry = {
+  id: 'core:set-glow',
+  name: 'Set atmosphere glow',
+  module: 'core',
+  category: 'view',
+  description: 'Control the atmospheric glow color, intensity, and thickness around the globe',
+  patterns: [
+    'set glow {color}', 'atmosphere {color}', 'glow color {color}',
+    'set atmosphere color {color}', 'glow intensity {intensity}',
+  ],
+  params: [
+    { name: 'color', type: 'string', required: false, description: 'CSS color like "#76B900", "cyan", "red"' },
+    { name: 'intensity', type: 'number', required: false, description: 'Glow intensity 0-1', range: [0, 1] },
+    { name: 'thickness', type: 'number', required: false, description: 'Glow thickness 0-1', range: [0, 1] },
+  ],
+  handler: (params) => {
+    const viewer = getViewer()
+    if (!viewer) return
+    const { atmosphere, skyAtmosphere } = viewer.scene
+    const parts: string[] = []
+
+    if (params.color != null) {
+      const colorStr = String(params.color).trim()
+      const hueShift = cssColorToHueShift(colorStr)
+      if (hueShift === null) return `Invalid color: "${colorStr}"`
+      atmosphere.hueShift = hueShift
+      if (skyAtmosphere) skyAtmosphere.hueShift = hueShift
+      parts.push(`color → ${colorStr}`)
+    }
+
+    if (params.intensity != null) {
+      const v = Math.max(0, Math.min(1, Number(params.intensity)))
+      const saturationShift = v * 2 - 1
+      atmosphere.saturationShift = saturationShift
+      if (skyAtmosphere) skyAtmosphere.saturationShift = saturationShift
+      parts.push(`intensity → ${v}`)
+    }
+
+    if (params.thickness != null) {
+      const v = Math.max(0, Math.min(1, Number(params.thickness)))
+      const brightnessShift = v * 2 - 1
+      atmosphere.brightnessShift = brightnessShift
+      if (skyAtmosphere) skyAtmosphere.brightnessShift = brightnessShift
+      parts.push(`thickness → ${v}`)
+    }
+
+    if (parts.length === 0) return 'Provide at least one of: color, intensity, thickness'
+    return `Atmosphere glow set: ${parts.join(', ')}`
+  },
+}
+
+const resetGlow: CommandEntry = {
+  id: 'core:reset-glow',
+  name: 'Reset atmosphere glow',
+  module: 'core',
+  category: 'view',
+  description: 'Reset atmospheric glow to Cesium defaults',
+  patterns: ['reset glow', 'reset atmosphere', 'default atmosphere', 'clear glow'],
+  params: [],
+  handler: () => {
+    const viewer = getViewer()
+    if (!viewer) return
+    const { atmosphere, skyAtmosphere } = viewer.scene
+    atmosphere.hueShift = 0
+    atmosphere.saturationShift = 0
+    atmosphere.brightnessShift = 0
+    if (skyAtmosphere) {
+      skyAtmosphere.hueShift = 0
+      skyAtmosphere.saturationShift = 0
+      skyAtmosphere.brightnessShift = 0
+    }
+    return 'Atmosphere glow reset to defaults'
+  },
+}
+
 /** All core commands */
 export const coreCommands: CommandEntry[] = [
   goTo, resetView, zoomIn, zoomOut, zoomTo, faceDirection, lookAt, orbit,
@@ -1239,4 +1338,5 @@ export const coreCommands: CommandEntry[] = [
   postMessage, readMessages,
   listApps, activateAppCmd, deactivateAppCmd,
   playbackCmd, stepForwardCmd, stepBackCmd, getDateCmd, setDateCmd,
+  setGlow, resetGlow,
 ]
