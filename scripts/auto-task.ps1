@@ -1,48 +1,53 @@
 <#
 .SYNOPSIS
-    Launch an autonomous Claude Code task with safety isolation and quality review.
+    Launch an autonomous Claude Code task with Docker sandboxing, quality review, and auto-fix.
 
 .DESCRIPTION
-    Two-phase autonomous execution:
-      Phase 1 (BUILD):  Claude implements the task with full autonomy
-      Phase 2 (REVIEW): A separate Claude instance reviews the work against
-                        success criteria, checks code quality, runs tests,
-                        and produces a scorecard
+    Four-phase autonomous execution with safety, quality, and observability:
+      Phase 1 (PLAN):   Claude analyzes codebase, writes implementation plan
+      Phase 2 (BUILD):  Claude follows the plan, implements, typechecks, commits
+      Phase 3 (REVIEW): Separate Claude reviews work, produces scorecard
+      Phase 4 (FIX):    If review says NEEDS WORK, Claude fixes issues (up to N retries)
 
-    Runs in Docker by default for safety. Falls back to worktree isolation
-    with explicit opt-in.
+    Safety: Docker sandbox (non-root, resource-limited, network-restricted)
+    Quality: Baseline typecheck, diff size guard, pass/fail scorecard
+    Observability: Per-phase timing, log files, history CSV, desktop notifications
 
 .PARAMETER Task
     Detailed description of what Claude should accomplish.
 
 .PARAMETER Criteria
-    Success criteria for the review phase. If omitted, Claude infers
-    reasonable criteria from the task description.
+    Success criteria for review. If omitted, Claude infers from task.
 
 .PARAMETER Branch
-    Name for the worktree branch (default: auto-generated from timestamp).
-
-.PARAMETER NoWorktree
-    Run in the current directory instead of creating a worktree.
+    Branch name (default: auto-timestamped).
 
 .PARAMETER NoDocker
-    Force worktree mode even if Docker is available.
+    Skip Docker, use worktree only (unsafe).
+
+.PARAMETER NoWorktree
+    Run directly in working tree (most unsafe).
 
 .PARAMETER SkipReview
-    Skip the review phase (just build, no quality check).
+    Skip review and fix phases.
+
+.PARAMETER AutoMerge
+    If review verdict is PASS, merge automatically.
+
+.PARAMETER MaxFixes
+    Max fix iterations if review says NEEDS WORK (default: 2).
 
 .PARAMETER Model
-    Model to use (default: uses Claude Code's default).
+    Model override.
 
 .PARAMETER MaxTurns
-    Maximum number of agentic turns (default: unlimited).
+    Max agentic turns for BUILD phase (default: unlimited).
 
 .EXAMPLE
-    .\scripts\auto-task.ps1 -Task "Add entity clustering to fix ship tracker lockup" `
-        -Criteria "1. EntityCluster enabled on GeoJSON datasources 2. Ships don't freeze the UI 3. TypeScript compiles 4. No console errors"
+    .\scripts\auto-task.ps1 -Task "Add entity clustering" -Criteria "1. Clustering enabled 2. TypeScript compiles"
 
 .EXAMPLE
-    .\scripts\auto-task.ps1 -Task "Build Tron Mode theme" -Branch "tron-mode"
+    .\scripts\auto-task.ps1 -Task "Build Tron Mode" -AutoMerge -Branch "tron-mode"
 #>
 
 param(
@@ -50,37 +55,91 @@ param(
     [string]$Task,
 
     [string]$Criteria = "",
-
     [string]$Branch = "auto/$(Get-Date -Format 'yyyyMMdd-HHmmss')",
-
-    [switch]$NoWorktree,
-
     [switch]$NoDocker,
-
+    [switch]$NoWorktree,
     [switch]$SkipReview,
-
+    [switch]$AutoMerge,
+    [int]$MaxFixes = 2,
     [string]$Model,
-
     [int]$MaxTurns = 0
 )
+
+# ── Configuration ──
 
 $projectRoot = "C:\Users\halld\Dropbox\WORK_NVIDIA\NV_PROJECTS\worldscope"
 $worktreeBase = "$projectRoot\.claude\worktrees"
 $reportDir = "$projectRoot\scripts\reports"
-
-# Ensure report directory exists
-if (-not (Test-Path $reportDir)) { New-Item -ItemType Directory -Path $reportDir -Force | Out-Null }
-
+$historyFile = "$reportDir\history.csv"
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $reportFile = "$reportDir\$timestamp-review.md"
+$logFile = "$reportDir\$timestamp-log.txt"
+$branchSafe = $Branch -replace '/','-'
 
-# ── Phase 1 prompt: PLAN ──
+# Phase turn limits (prevent infinite loops)
+$planMaxTurns = 20
+$reviewMaxTurns = 15
+$fixMaxTurns = 25
 
-$planPrompt = @"
+# Diff guard thresholds
+$maxFilesChanged = 20
+$maxLinesChanged = 2000
+
+# Docker resource limits
+$dockerMemory = "4g"
+$dockerCpus = "2"
+
+# ── Setup ──
+
+if (-not (Test-Path $reportDir)) { New-Item -ItemType Directory -Path $reportDir -Force | Out-Null }
+
+# Initialize history CSV if needed
+if (-not (Test-Path $historyFile)) {
+    "timestamp,branch,task,verdict,plan_sec,build_sec,review_sec,fix_sec,files_changed,lines_changed" | Out-File -FilePath $historyFile -Encoding utf8
+}
+
+# Log helper
+function Log {
+    param([string]$Msg, [string]$Color = "White")
+    $line = "$(Get-Date -Format 'HH:mm:ss') $Msg"
+    Write-Host $line -ForegroundColor $Color
+    $line | Out-File -FilePath $logFile -Append -Encoding utf8
+}
+
+# Timer helper
+function Measure-Phase {
+    param([scriptblock]$Block)
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    & $Block
+    $sw.Stop()
+    return [math]::Round($sw.Elapsed.TotalSeconds, 1)
+}
+
+# Desktop notification (Windows toast)
+function Send-Notification {
+    param([string]$Title, [string]$Body)
+    try {
+        [System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null
+        $notify = New-Object System.Windows.Forms.NotifyIcon
+        $notify.Icon = [System.Drawing.SystemIcons]::Information
+        $notify.BalloonTipTitle = $Title
+        $notify.BalloonTipText = $Body
+        $notify.Visible = $true
+        $notify.ShowBalloonTip(10000)
+        Start-Sleep -Milliseconds 500
+        $notify.Dispose()
+    } catch {
+        # Notifications are best-effort
+    }
+}
+
+# ── Prompts ──
+
+$planPrompt = @'
 You are a software architect working on the Worldscope project - a CesiumJS-based 3D globe platform.
 Read CLAUDE.md for project conventions. Read CESIUM_CAPABILITIES.md for available CesiumJS APIs.
 
-TASK: $Task
+TASK: {TASK}
 
 YOUR JOB: Think through this carefully and produce an implementation plan. Do NOT write any code yet.
 
@@ -121,15 +180,13 @@ YOUR JOB: Think through this carefully and produce an implementation plan. Do NO
    Low / Medium / High
 
 Do NOT write implementation code. Only produce the plan.
-"@
+'@ -replace '\{TASK\}', $Task
 
-# ── Phase 2 prompt: BUILD ──
-
-$buildPrompt = @"
+$buildPrompt = @'
 You are working on the Worldscope project - a CesiumJS-based 3D globe platform.
 Read CLAUDE.md for project conventions.
 
-TASK: $Task
+TASK: {TASK}
 
 Read PLAN.md first - it contains the implementation plan you must follow.
 
@@ -142,9 +199,7 @@ INSTRUCTIONS:
 - If you encounter errors, debug and fix them - don't stop
 - Delete PLAN.md when done (it was a working document)
 - Be thorough but focused on the specific task
-"@
-
-# ── Phase 2 prompt: REVIEW ──
+'@ -replace '\{TASK\}', $Task
 
 $criteriaBlock = if ($Criteria) {
     "SUCCESS CRITERIA (provided by user):`n$Criteria"
@@ -152,14 +207,14 @@ $criteriaBlock = if ($Criteria) {
     "SUCCESS CRITERIA: Infer reasonable criteria from the task description above."
 }
 
-$reviewPrompt = @"
+$reviewPrompt = @'
 You are a code reviewer for the Worldscope project (CesiumJS 3D globe platform).
 Read CLAUDE.md for project conventions.
 
 A developer just completed this task:
-TASK: $Task
+TASK: {TASK}
 
-$criteriaBlock
+{CRITERIA}
 
 YOUR JOB: Review the work and produce a scorecard. Do ALL of the following:
 
@@ -190,7 +245,7 @@ YOUR JOB: Review the work and produce a scorecard. Do ALL of the following:
    - Are there unnecessary allocations in hot paths?
 
 6. PRODUCE SCORECARD
-   Write a markdown report with this structure:
+   Write a markdown report to {REPORT_FILE} with this structure:
 
    # Auto-Task Review: [short task name]
    Date: [timestamp]
@@ -218,203 +273,399 @@ YOUR JOB: Review the work and produce a scorecard. Do ALL of the following:
    ## Verdict
    **PASS** / **PASS WITH NOTES** / **NEEDS WORK**
    [1-2 sentence summary]
+'@ -replace '\{TASK\}', $Task -replace '\{CRITERIA\}', $criteriaBlock -replace '\{REPORT_FILE\}', $reportFile
 
-Write this scorecard to: $reportFile
-"@
+$fixPromptTemplate = @'
+You are working on the Worldscope project. A code review found issues with your previous work.
 
-# ── Require Docker unless explicitly opting out ──
+ORIGINAL TASK: {TASK}
+
+REVIEW SCORECARD:
+{SCORECARD}
+
+Fix ALL issues listed in the review. Then:
+1. Run typecheck: node node_modules/typescript/bin/tsc --noEmit
+2. Commit your fixes with a message starting with "fix: "
+3. Do not introduce new features - only fix the reported issues
+'@ -replace '\{TASK\}', $Task
+
+# ── Docker check ──
 
 $dockerAvailable = $null -ne (Get-Command docker -ErrorAction SilentlyContinue)
 
 if (-not $NoWorktree -and -not $NoDocker) {
     if (-not $dockerAvailable) {
-        Write-Host "`n[auto-task] ABORTED: Docker is not available." -ForegroundColor Red
-        Write-Host "[auto-task] Autonomous tasks require Docker for safe sandboxed execution." -ForegroundColor Red
-        Write-Host "[auto-task] Install Docker Desktop: https://docs.docker.com/desktop/" -ForegroundColor Yellow
-        Write-Host "`n[auto-task] To bypass (UNSAFE):" -ForegroundColor Yellow
-        Write-Host "  -NoDocker    worktree isolation only" -ForegroundColor Gray
-        Write-Host "  -NoWorktree  no isolation at all" -ForegroundColor Gray
+        Log "ABORTED: Docker is not available." "Red"
+        Log "Autonomous tasks require Docker for safe sandboxed execution." "Red"
+        Log "Install Docker Desktop: https://docs.docker.com/desktop/" "Yellow"
+        Log "To bypass (UNSAFE): use -NoDocker or -NoWorktree" "Yellow"
+        exit 1
+    }
+    # Verify daemon is running
+    $daemonOk = docker info 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Log "ABORTED: Docker daemon is not running. Start Docker Desktop first." "Red"
         exit 1
     }
 }
 
 $useDocker = $dockerAvailable -and -not $NoDocker -and -not $NoWorktree
 
-# ── Helper: run Claude in the given directory ──
+# ── Helpers ──
 
 function Invoke-Claude {
-    param([string]$Prompt, [string]$WorkDir, [string]$Phase)
+    param([string]$Prompt, [string]$WorkDir, [int]$Turns = 0)
 
     $claudeArgs = @("-p", $Prompt, "--dangerously-skip-permissions")
     if ($Model) { $claudeArgs += @("--model", $Model) }
-    if ($MaxTurns -gt 0 -and $Phase -eq "BUILD") { $claudeArgs += @("--max-turns", $MaxTurns) }
+    if ($Turns -gt 0) { $claudeArgs += @("--max-turns", $Turns) }
 
     Push-Location $WorkDir
-    & claude @claudeArgs
+    & claude @claudeArgs 2>&1 | Tee-Object -FilePath $logFile -Append
     $script:lastExit = $LASTEXITCODE
     Pop-Location
 }
 
 function Invoke-ClaudeDocker {
-    param([string]$Prompt, [string]$WorktreePath, [string]$Phase)
+    param([string]$Prompt, [string]$WorktreePath, [string]$Phase, [int]$Turns = 0)
 
     $claudeHome = Join-Path $env:USERPROFILE ".claude"
     $claudeJson = Join-Path $env:USERPROFILE ".claude.json"
+
     $dockerArgs = @(
         "run", "--rm",
+        # Resource limits
+        "--memory", $dockerMemory,
+        "--cpus", $dockerCpus,
+        # Mount workspace
         "-v", "${WorktreePath}:/workspace",
         "-v", "${projectRoot}\node_modules:/workspace/node_modules:ro",
+        # Auth
         "-v", "${claudeHome}:/home/claude/.claude:ro",
         "-v", "${claudeJson}:/home/claude/.claude.json:ro",
         "-e", "ANTHROPIC_API_KEY=$env:ANTHROPIC_API_KEY"
     )
+
     if ($Model) { $dockerArgs += @("-e", "CLAUDE_MODEL=$Model") }
 
-    # Mount reports dir for review phase
-    if ($Phase -eq "REVIEW") {
+    # Mount reports dir for review/fix phases
+    if ($Phase -eq "REVIEW" -or $Phase -eq "FIX") {
         $dockerArgs += @("-v", "${reportDir}:/workspace/scripts/reports")
     }
 
-    $dockerArgs += @("worldscope-task", $Prompt)
+    # Build claude args (appended after image name via entrypoint)
+    $claudeExtraArgs = @($Prompt)
+    if ($Turns -gt 0) { $claudeExtraArgs = @("--max-turns", $Turns, $Prompt) }
 
-    & docker @dockerArgs
+    # Entrypoint is: claude -p --dangerously-skip-permissions
+    # We pass extra args: [--max-turns N] "prompt"
+    $dockerArgs += @("worldscope-task") + $claudeExtraArgs
+
+    & docker @dockerArgs 2>&1 | Tee-Object -FilePath $logFile -Append
     $script:lastExit = $LASTEXITCODE
+}
+
+function Run-Phase {
+    param([string]$Prompt, [string]$Phase, [int]$Turns = 0)
+
+    if ($useDocker) {
+        Invoke-ClaudeDocker -Prompt $Prompt -WorktreePath $workDir -Phase $Phase -Turns $Turns
+    } else {
+        Invoke-Claude -Prompt $Prompt -WorkDir $workDir -Turns $Turns
+    }
+    return $script:lastExit
+}
+
+function Get-DiffStats {
+    param([string]$Dir)
+    Push-Location $Dir
+    $stat = git diff HEAD~1 --stat 2>$null
+    $filesChanged = 0
+    $linesChanged = 0
+    if ($stat) {
+        $summaryLine = $stat | Select-Object -Last 1
+        if ($summaryLine -match '(\d+) file') { $filesChanged = [int]$Matches[1] }
+        if ($summaryLine -match '(\d+) insertion') { $linesChanged += [int]$Matches[1] }
+        if ($summaryLine -match '(\d+) deletion') { $linesChanged += [int]$Matches[1] }
+    }
+    Pop-Location
+    return @{ Files = $filesChanged; Lines = $linesChanged }
 }
 
 # ── Setup worktree ──
 
-$worktreePath = "$worktreeBase\$($Branch -replace '/','-')"
+$worktreePath = "$worktreeBase\$branchSafe"
 
 if (-not $NoWorktree) {
     Push-Location $projectRoot
-    git worktree add $worktreePath -b $Branch 2>&1 | Write-Host
+    git worktree add $worktreePath -b $Branch 2>&1 | ForEach-Object { Log $_ "Gray" }
     Pop-Location
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "[auto-task] Failed to create worktree" -ForegroundColor Red
+        Log "Failed to create worktree" "Red"
         exit 1
     }
 
-    # Symlink node_modules
+    # Symlink node_modules for non-Docker mode
     if (-not $useDocker -and (Test-Path "$projectRoot\node_modules")) {
         New-Item -ItemType Junction -Path "$worktreePath\node_modules" -Target "$projectRoot\node_modules" -Force | Out-Null
     }
 }
 
 $workDir = if ($NoWorktree) { $projectRoot } else { $worktreePath }
-$modeLabel = if ($useDocker) { "DOCKER (sandboxed)" } elseif ($NoWorktree) { "DIRECT (no isolation)" } else { "WORKTREE (branch isolation)" }
+$modeLabel = if ($useDocker) { "DOCKER (sandboxed, ${dockerMemory} RAM, ${dockerCpus} CPUs)" } elseif ($NoWorktree) { "DIRECT (no isolation)" } else { "WORKTREE (branch isolation)" }
 
-# ── Ensure Docker image exists ──
-
+# Ensure Docker image exists
 if ($useDocker) {
     $imageExists = docker images -q worldscope-task 2>$null
     if (-not $imageExists) {
-        Write-Host "[auto-task] Building Docker image..." -ForegroundColor Cyan
-        docker build -f "$projectRoot\scripts\Dockerfile.auto-task" -t worldscope-task $projectRoot
+        Log "Building Docker image..." "Cyan"
+        docker build -f "$projectRoot\scripts\Dockerfile.auto-task" -t worldscope-task $projectRoot 2>&1 | ForEach-Object { Log $_ "Gray" }
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "[auto-task] ABORTED: Docker build failed." -ForegroundColor Red
+            Log "ABORTED: Docker build failed." "Red"
             exit 1
         }
     }
 }
 
-Write-Host "`n[auto-task] Mode: $modeLabel" -ForegroundColor Green
-Write-Host "[auto-task] Task: $Task" -ForegroundColor White
-if ($Criteria) { Write-Host "[auto-task] Criteria: $Criteria" -ForegroundColor Gray }
+# Tracking variables
+$planSec = 0; $buildSec = 0; $reviewSec = 0; $fixSec = 0
+$verdict = "SKIPPED"
+$diffFiles = 0; $diffLines = 0
 
-# ── Phase 1: PLAN ──
+Log "" "White"
+Log "================================================================" "Cyan"
+Log "  AUTO-TASK: $Task" "White"
+Log "  Mode: $modeLabel" "Green"
+Log "  Branch: $Branch" "Cyan"
+if ($Criteria) { Log "  Criteria: $Criteria" "Gray" }
+Log "  Log: $logFile" "Gray"
+Log "================================================================" "Cyan"
 
-Write-Host "`n+==========================================+" -ForegroundColor Yellow
-Write-Host "|  PHASE 1: PLAN                           |" -ForegroundColor Yellow
-Write-Host "+==========================================+" -ForegroundColor Yellow
-Write-Host "[auto-task] Analyzing codebase and designing approach...`n" -ForegroundColor White
+# ══════════════════════════════════════════
+#  PHASE 1: PLAN
+# ══════════════════════════════════════════
 
-if ($useDocker) {
-    Invoke-ClaudeDocker -Prompt $planPrompt -WorktreePath $workDir -Phase "PLAN"
-} else {
-    Invoke-Claude -Prompt $planPrompt -WorkDir $workDir -Phase "PLAN"
+Log "" "White"
+Log "+==========================================+" "Yellow"
+Log "|  PHASE 1: PLAN                           |" "Yellow"
+Log "+==========================================+" "Yellow"
+Log "Analyzing codebase and designing approach..." "White"
+
+$planSec = Measure-Phase {
+    $script:planExit = Run-Phase -Prompt $planPrompt -Phase "PLAN" -Turns $planMaxTurns
 }
 
-$planExit = $script:lastExit
-Write-Host "`n[auto-task] Plan phase exited with code $planExit" -ForegroundColor $(if ($planExit -eq 0) { "Green" } else { "Red" })
+Log "Plan phase: ${planSec}s, exit code $($script:planExit)" $(if ($script:planExit -eq 0) { "Green" } else { "Red" })
 
-# Show plan if it exists
+# Show plan
 $planFile = Join-Path $workDir "PLAN.md"
 if (Test-Path $planFile) {
-    Write-Host "`n-- PLAN --" -ForegroundColor Yellow
-    Get-Content $planFile | Write-Host
-    Write-Host "-- END PLAN --`n" -ForegroundColor Yellow
+    Log "" "Yellow"
+    Log "-- PLAN --" "Yellow"
+    Get-Content $planFile | ForEach-Object { Log $_ "Gray" }
+    Log "-- END PLAN --" "Yellow"
 }
 
-# ── Phase 2: BUILD ──
+# Gate: if plan failed, abort
+if ($script:planExit -ne 0) {
+    Log "ABORTED: Plan phase failed. Not proceeding to build." "Red"
+    Send-Notification "Auto-Task Failed" "Plan phase failed for: $Task"
 
-Write-Host "`n+==========================================+" -ForegroundColor Cyan
-Write-Host "|  PHASE 2: BUILD                          |" -ForegroundColor Cyan
-Write-Host "+==========================================+" -ForegroundColor Cyan
-Write-Host "[auto-task] Implementing plan...`n" -ForegroundColor White
-
-if ($useDocker) {
-    Invoke-ClaudeDocker -Prompt $buildPrompt -WorktreePath $workDir -Phase "BUILD"
-} else {
-    Invoke-Claude -Prompt $buildPrompt -WorkDir $workDir -Phase "BUILD"
+    # Record in history
+    "$timestamp,$branchSafe,`"$Task`",PLAN_FAILED,$planSec,0,0,0,0,0" | Out-File -FilePath $historyFile -Append -Encoding utf8
+    exit 1
 }
 
-$buildExit = $script:lastExit
-Write-Host "`n[auto-task] Build phase exited with code $buildExit" -ForegroundColor $(if ($buildExit -eq 0) { "Green" } else { "Red" })
+# ══════════════════════════════════════════
+#  PHASE 2: BUILD
+# ══════════════════════════════════════════
 
-# Show what changed
+Log "" "White"
+Log "+==========================================+" "Cyan"
+Log "|  PHASE 2: BUILD                          |" "Cyan"
+Log "+==========================================+" "Cyan"
+Log "Implementing plan..." "White"
+
+$buildSec = Measure-Phase {
+    $script:buildExit = Run-Phase -Prompt $buildPrompt -Phase "BUILD" -Turns $MaxTurns
+}
+
+Log "Build phase: ${buildSec}s, exit code $($script:buildExit)" $(if ($script:buildExit -eq 0) { "Green" } else { "Red" })
+
+# Diff size guard
+if (-not $NoWorktree) {
+    $stats = Get-DiffStats -Dir $worktreePath
+    $diffFiles = $stats.Files
+    $diffLines = $stats.Lines
+    Log "Changes: $diffFiles files, $diffLines lines" "Cyan"
+
+    if ($diffFiles -gt $maxFilesChanged) {
+        Log "WARNING: $diffFiles files changed (threshold: $maxFilesChanged). Review carefully." "Yellow"
+    }
+    if ($diffLines -gt $maxLinesChanged) {
+        Log "WARNING: $diffLines lines changed (threshold: $maxLinesChanged). Review carefully." "Yellow"
+    }
+}
+
+# Show committed changes
 if (-not $NoWorktree) {
     Push-Location $worktreePath
     $changes = git status --short
     $diffStat = git diff HEAD~1 --stat 2>$null
     Pop-Location
 
-    if ($changes) {
-        Write-Host "`n[auto-task] Uncommitted changes:" -ForegroundColor Yellow
-        Write-Host $changes
-    }
+    if ($changes) { Log "Uncommitted: $changes" "Yellow" }
     if ($diffStat) {
-        Write-Host "`n[auto-task] Committed changes:" -ForegroundColor Cyan
-        Write-Host $diffStat
+        Log "" "Cyan"
+        $diffStat | ForEach-Object { Log $_ "Cyan" }
     }
 }
 
-# ── Phase 2: REVIEW ──
+# ══════════════════════════════════════════
+#  PHASE 3: REVIEW
+# ══════════════════════════════════════════
 
 if (-not $SkipReview) {
-    Write-Host "`n+==========================================+" -ForegroundColor Magenta
-    Write-Host "|  PHASE 3: REVIEW                         |" -ForegroundColor Magenta
-    Write-Host "+==========================================+" -ForegroundColor Magenta
-    Write-Host "[auto-task] Reviewing work quality...`n" -ForegroundColor White
+    Log "" "White"
+    Log "+==========================================+" "Magenta"
+    Log "|  PHASE 3: REVIEW                         |" "Magenta"
+    Log "+==========================================+" "Magenta"
+    Log "Reviewing work quality..." "White"
 
-    if ($useDocker) {
-        Invoke-ClaudeDocker -Prompt $reviewPrompt -WorktreePath $workDir -Phase "REVIEW"
-    } else {
-        Invoke-Claude -Prompt $reviewPrompt -WorkDir $workDir -Phase "REVIEW"
+    $reviewSec = Measure-Phase {
+        $script:reviewExit = Run-Phase -Prompt $reviewPrompt -Phase "REVIEW" -Turns $reviewMaxTurns
     }
 
-    $reviewExit = $script:lastExit
-    Write-Host "`n[auto-task] Review phase exited with code $reviewExit" -ForegroundColor $(if ($reviewExit -eq 0) { "Green" } else { "Red" })
+    Log "Review phase: ${reviewSec}s, exit code $($script:reviewExit)" $(if ($script:reviewExit -eq 0) { "Green" } else { "Red" })
 
-    # Display the scorecard
+    # Display scorecard
     if (Test-Path $reportFile) {
-        Write-Host "`n===========================================" -ForegroundColor Magenta
-        Write-Host "  SCORECARD" -ForegroundColor Magenta
-        Write-Host "===========================================" -ForegroundColor Magenta
-        Get-Content $reportFile | Write-Host
-        Write-Host "===========================================`n" -ForegroundColor Magenta
-        Write-Host "[auto-task] Full report: $reportFile" -ForegroundColor Gray
+        Log "" "Magenta"
+        Log "===========================================" "Magenta"
+        Log "  SCORECARD" "Magenta"
+        Log "===========================================" "Magenta"
+        Get-Content $reportFile | ForEach-Object { Log $_ "White" }
+        Log "===========================================" "Magenta"
+        Log "Full report: $reportFile" "Gray"
+
+        # Parse verdict
+        $reportContent = Get-Content $reportFile -Raw
+        if ($reportContent -match '\*\*NEEDS WORK\*\*') {
+            $verdict = "NEEDS_WORK"
+        } elseif ($reportContent -match '\*\*PASS WITH NOTES\*\*') {
+            $verdict = "PASS_WITH_NOTES"
+        } elseif ($reportContent -match '\*\*PASS\*\*') {
+            $verdict = "PASS"
+        } else {
+            $verdict = "UNKNOWN"
+        }
     } else {
-        Write-Host "[auto-task] Warning: review report not found at $reportFile" -ForegroundColor Yellow
+        Log "Warning: review report not generated" "Yellow"
+        $verdict = "NO_REPORT"
+    }
+
+    # ══════════════════════════════════════════
+    #  PHASE 4: FIX (if needed)
+    # ══════════════════════════════════════════
+
+    $fixIteration = 0
+    while ($verdict -eq "NEEDS_WORK" -and $fixIteration -lt $MaxFixes) {
+        $fixIteration++
+        Log "" "White"
+        Log "+==========================================+" "Red"
+        Log "|  PHASE 4: FIX (attempt $fixIteration/$MaxFixes)              |" "Red"
+        Log "+==========================================+" "Red"
+        Log "Addressing review issues..." "White"
+
+        # Build fix prompt with scorecard content
+        $scorecard = if (Test-Path $reportFile) { Get-Content $reportFile -Raw } else { "No scorecard available" }
+        $fixPrompt = $fixPromptTemplate -replace '\{SCORECARD\}', $scorecard
+
+        $fixPhaseSec = Measure-Phase {
+            $script:fixExit = Run-Phase -Prompt $fixPrompt -Phase "FIX" -Turns $fixMaxTurns
+        }
+        $fixSec += $fixPhaseSec
+
+        Log "Fix phase: ${fixPhaseSec}s, exit code $($script:fixExit)" $(if ($script:fixExit -eq 0) { "Green" } else { "Red" })
+
+        # Re-review after fix
+        Log "Re-reviewing after fix..." "Magenta"
+        $reportFile = "$reportDir\$timestamp-review-fix${fixIteration}.md"
+        $reReviewPrompt = $reviewPrompt -replace [regex]::Escape("$reportDir\$timestamp-review.md"), $reportFile
+
+        $reReviewSec = Measure-Phase {
+            $script:reReviewExit = Run-Phase -Prompt $reReviewPrompt -Phase "REVIEW" -Turns $reviewMaxTurns
+        }
+        $reviewSec += $reReviewSec
+
+        if (Test-Path $reportFile) {
+            Log "" "Magenta"
+            Log "--- RE-REVIEW SCORECARD (attempt $fixIteration) ---" "Magenta"
+            Get-Content $reportFile | ForEach-Object { Log $_ "White" }
+            Log "---" "Magenta"
+
+            $reportContent = Get-Content $reportFile -Raw
+            if ($reportContent -match '\*\*NEEDS WORK\*\*') {
+                $verdict = "NEEDS_WORK"
+            } elseif ($reportContent -match '\*\*PASS WITH NOTES\*\*') {
+                $verdict = "PASS_WITH_NOTES"
+            } elseif ($reportContent -match '\*\*PASS\*\*') {
+                $verdict = "PASS"
+            }
+        }
+    }
+
+    if ($verdict -eq "NEEDS_WORK") {
+        Log "Task still NEEDS WORK after $MaxFixes fix attempts. Manual review required." "Yellow"
     }
 }
 
-# ── Summary ──
+# ══════════════════════════════════════════
+#  SUMMARY
+# ══════════════════════════════════════════
 
-Write-Host "`n[auto-task] === COMPLETE ===" -ForegroundColor Green
+$totalSec = $planSec + $buildSec + $reviewSec + $fixSec
+
+Log "" "Green"
+Log "================================================================" "Green"
+Log "  COMPLETE" "Green"
+Log "  Verdict: $verdict" $(if ($verdict -eq "PASS") { "Green" } elseif ($verdict -eq "PASS_WITH_NOTES") { "Yellow" } else { "Red" })
+Log "  Time: plan=${planSec}s build=${buildSec}s review=${reviewSec}s fix=${fixSec}s total=${totalSec}s" "Cyan"
+Log "  Changes: $diffFiles files, $diffLines lines" "Cyan"
+Log "  Log: $logFile" "Gray"
+Log "================================================================" "Green"
 
 if (-not $NoWorktree) {
-    Write-Host ('[auto-task] To review code: cd ' + $worktreePath) -ForegroundColor Cyan
-    Write-Host ('[auto-task] To merge:       cd ' + $projectRoot + '; git merge ' + $Branch) -ForegroundColor Cyan
-    Write-Host ('[auto-task] To discard:     git worktree remove ' + $worktreePath + '; git branch -D ' + $Branch) -ForegroundColor Gray
+    Log ('To review: cd ' + $worktreePath) "Cyan"
+    Log ('To merge:  cd ' + $projectRoot + '; git merge ' + $Branch) "Cyan"
+    Log ('To discard: git worktree remove ' + $worktreePath + '; git branch -D ' + $Branch) "Gray"
 }
+
+# Auto-merge if PASS and flag set
+if ($AutoMerge -and ($verdict -eq "PASS" -or $verdict -eq "PASS_WITH_NOTES") -and -not $NoWorktree) {
+    Log "" "Green"
+    Log "Auto-merging (verdict: $verdict)..." "Green"
+    Push-Location $projectRoot
+    git merge $Branch 2>&1 | ForEach-Object { Log $_ "Green" }
+    $mergeExit = $LASTEXITCODE
+    Pop-Location
+
+    if ($mergeExit -eq 0) {
+        Log "Merged successfully. Cleaning up worktree..." "Green"
+        Push-Location $projectRoot
+        git worktree remove $worktreePath --force 2>$null
+        git branch -D $Branch 2>$null
+        Pop-Location
+        Log "Done." "Green"
+    } else {
+        Log "Merge failed. Manual resolution required." "Red"
+    }
+}
+
+# Record in history
+"$timestamp,$branchSafe,`"$Task`",$verdict,$planSec,$buildSec,$reviewSec,$fixSec,$diffFiles,$diffLines" | Out-File -FilePath $historyFile -Append -Encoding utf8
+
+# Desktop notification
+$notifyBody = "Verdict: $verdict | ${totalSec}s | $diffFiles files"
+Send-Notification "Auto-Task Complete" $notifyBody
