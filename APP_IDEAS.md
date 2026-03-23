@@ -25,15 +25,35 @@ Data format parsers, rendering features, and visualization tools that other exte
 - **Zarr/Cloud-Optimized** — Stream data from cloud-optimized Zarr stores for multi-petabyte datasets (ERA5, ARCO) without local download *(planned)*
 - **COG/GeoTIFF** — Display Cloud Optimized GeoTIFFs for satellite imagery, elevation, and raster geospatial data *(planned)*
 - **OpenUSD Scenes** — Import and render OpenUSD scene descriptions on the globe, bridging with NVIDIA Omniverse *(planned)*
-- **KML/KMZ Import** — Load Google Earth KML/KMZ files for points of interest, paths, polygons, ground overlays *(planned)*
+- **KML/KMZ Import** — Load Google Earth KML/KMZ files using Cesium's built-in KmlDataSource *(planned)*
+- **CZML Support** — Time-dynamic entity scenarios via Cesium's CzmlDataSource; sampled positions, interpolation, availability windows *(planned)*
+- **GPX Track Import** — Load GPS tracks, routes, and waypoints using Cesium's GpxDataSource *(planned)*
+- **Gaussian Splatting** — Render 3D Gaussian Splatting data via KHR_gaussian_splatting extension in 3D Tiles *(planned)*
 
 ### Rendering
 - **Volumetric Clouds** — 3D cloud rendering using raymarching or billboard techniques; integrate with weather data for realistic cloud cover *(planned)*
 - **2D / 2.5D Flat Mode** — Replace the 3D globe with flat (Mercator, equirectangular) or topographic relief projection for traditional map views *(planned)* — `exclusiveGroup: projection`
 - **Wind/Flow Vectors** — Animated particle streams showing wind, ocean current, or other vector field data on the globe *(planned)*
-- **Atmospheric Glow** — Enhanced atmospheric scattering for photorealistic sunrise/sunset rendering *(planned)*
+- **Atmospheric Glow** — Tunable Rayleigh/Mie scattering, hue/brightness shifts, dynamic lighting for cinematic atmosphere *(planned)*
 - **Cross-Section Viewer** — Slice through volumetric atmospheric data along user-defined vertical cross-sections *(planned)*
 - **Temporal Animator** — Timeline slider with play/pause and configurable frame rates for time-varying datasets *(planned)*
+- **Particle Systems** — Rain, snow, fire, smoke, volcanic ash using Cesium's ParticleSystem with Circle/Box/Sphere/Cone emitters *(planned)*
+- **Post-Processing Pipeline** — Expose Cesium's PostProcessStageLibrary: bloom, depth of field, edge detection, silhouettes, night vision, lens flare, FXAA *(planned)*
+- **Shadow Mapping** — Cascaded shadow maps on terrain, buildings, and models via scene.shadowMap *(planned)*
+- **Water Effects** — Animated ocean waves with sun/moon specular highlights via Globe.showWaterEffect and water mask *(planned)*
+- **Terrain Materials** — Elevation contours, slope ramps, aspect ramps via Globe.material; topographic visualization *(planned)*
+- **Terrain Clipping** — Cut away terrain with clipping planes/polygons for cross-sections and underground reveals *(planned)*
+- **Globe Translucency** — Make globe transparent by region for subsurface/underground visualization *(planned)*
+- **Underground Rendering** — Camera below terrain surface with undergroundColor and disabled collision detection *(planned)*
+- **Terrain Exaggeration** — Vertically scale terrain for dramatic relief visualization *(planned)*
+- **Entity Clustering** — Automatic screen-space clustering for dense data (earthquakes, ships, flights) via EntityCluster *(planned)*
+- **Voxel Primitives** — Volumetric 3D data rendering for atmospheric/subsurface data via VoxelPrimitive (experimental) *(planned)*
+- **3D Model System** — Place, animate, and interact with glTF models; articulations, custom shaders, silhouettes *(planned)*
+- **Custom Shaders** — Fabric material system and CustomShader class for data-driven visualization on models/tiles *(planned)*
+- **Ground Primitives** — Drape geometry on terrain; classification primitives for highlighting features *(planned)*
+- **Cinematic Camera** — Multi-waypoint flight paths with easing functions, KML Tours, entity tracking *(planned)*
+- **Point Cloud Rendering** — LAS/LAZ point clouds via 3D Tiles with eye dome lighting and metadata styling *(planned)*
+- **Fog Control** — Configurable density, height falloff, brightness for atmospheric depth *(planned)*
 
 ### Visualization & Charting
 - **Matplotlib-style Plotting** — Generate static plots of data (line, scatter, heatmap, histogram) as overlay panels or export images *(planned)*
@@ -42,7 +62,8 @@ Data format parsers, rendering features, and visualization tools that other exte
 ### Analysis & Plotting
 - **Point Inspector** — Click any location to see all available data values at that point across all layers *(planned)*
 - **Region Statistics** — Draw polygons or select regions to compute area-averaged statistics, histograms, trends *(planned)*
-- **Comparison View** — Side-by-side or overlay comparison of datasets, time steps, or model outputs with difference mapping *(planned)*
+- **Comparison View** — Side-by-side or overlay comparison of datasets, time steps, or model outputs with split-screen (Cesium splitDirection) *(planned)*
+- **Elevation Sampling** — Query terrain height at any point or batch of points via sampleTerrainMostDetailed *(planned)*
 
 ---
 
@@ -154,7 +175,7 @@ Where GPU-accelerated inference and simulation workloads run. Multiple can be co
 - **Cloud GPU** — Cloud instances (AWS, GCP, Lambda Labs, etc.); auto-provision and tear down *(planned)*
 - **NVIDIA NIM** — NVIDIA Inference Microservices; managed API endpoints for Earth-2 and other NVIDIA models *(planned)*
 
-> **Infrastructure:** Job Manager (unified submission, status, queues), Result Cache (content-addressed by model+input hash), Data Pipeline (automated input fetching/regridding), Auth Manager (unified credentials)
+> **Infrastructure:** Job Manager (unified submission, status, queues), Result Cache (content-addressed by model+input hash), Data Pipeline (automated input fetching/regridding), Auth Manager (unified credentials), **Compute Mesh** (federate local, remote, and cloud GPUs into a unified resource pool for distributed inference) *(planned)*
 
 ---
 
@@ -197,6 +218,10 @@ Visual appearance presets. Each theme controls colors, UI styling, and optional 
 - **Default Dark** — Dark background, subtle UI, standard Cesium rendering *(done)* — `exclusiveGroup: theme`
 - **Light Theme** — Light background variant for presentations and print *(planned)* — `exclusiveGroup: theme`
 - **Tron Mode** — Neon bloom effects, dark cyberpunk aesthetic, glowing grid lines, scanline overlays *(planned)* — `exclusiveGroup: theme`
+- **Night Vision** — Green-tinted amplified light effect via Cesium's createNightVisionStage *(planned)* — `exclusiveGroup: theme`
+- **Cinematic** — Depth of field + lens flare + tuned atmosphere for dramatic visuals *(planned)* — `exclusiveGroup: theme`
+- **Topo Map** — Elevation contour material on terrain, muted colors *(planned)* — `exclusiveGroup: theme`
+- **Ocean** — Water effects + bathymetry terrain + globe translucency for underwater focus *(planned)* — `exclusiveGroup: theme`
 - **Custom Colormaps** — Swap data visualization palettes (viridis, magma, inferno, plasma, cividis); all must be perceptually uniform *(planned)*
 
 ---
@@ -206,18 +231,31 @@ Visual appearance presets. Each theme controls colors, UI styling, and optional 
 
 ---
 
+## Multi-View & Collaboration
+
+- **Split View** — Horizontal or vertical window splits within the app; each pane can show different globe state, layers, or time *(planned)*
+- **Multi-Window** — Multiple browser windows coordinated via MCP/WebSocket on one machine; each window is an independent viewer *(planned)*
+- **Multi-Machine** — Coordinated views across multiple machines via MCP; shared state for presentations and team collaboration *(planned)*
+- **Compute Mesh** — Federate local GPU, remote servers, and cloud instances into a unified compute pool; distribute inference jobs across the mesh based on model size and availability *(planned)*
+
+---
+
 ## Development Priorities
 
 Suggested near-term ordering based on demo value, strategic alignment, and technical dependencies:
 
 1. Extension system architecture *(done)*
-2. NetCDF + HEALPix readers — most important data formats for Earth science AI
-3. StormCast / cBottle integration — highest-impact Earth-2 model demos
-4. DGX Spark support — aligns with NVIDIA hardware strategy
-5. Moon Globe app — demonstrates multi-planetary capability
-6. AI Skills (Weather Analysis) — first skill package, proves the concept
-7. Temporal Animator + Wind Vectors — high visual impact, essential for weather model viz
-8. GeoGuessr game — fun, demonstrates platform flexibility
+2. Extension Catalog UI *(done)*
+3. NetCDF + HEALPix readers — most important data formats for Earth science AI
+4. Quick CesiumJS wins — entity clustering, 2D/Columbus view, water effects, post-processing, shadows
+5. StormCast / cBottle integration — highest-impact Earth-2 model demos
+6. DGX Spark support — aligns with NVIDIA hardware strategy
+7. Moon Globe app — demonstrates multi-planetary capability (Cesium ion has lunar terrain)
+8. AI Skills (Weather Analysis) — first skill package, proves the concept
+9. Tron Mode theme — bloom + edge detection + neon (high visual impact, low effort)
+10. Temporal Animator + Wind Vectors — essential for weather model visualization
+11. Multi-view / split screen — coordinated views for comparison and collaboration
+12. GeoGuessr game — fun, demonstrates platform flexibility
 
 ---
 
