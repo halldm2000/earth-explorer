@@ -520,8 +520,8 @@ function getOrCreateDataSource(viewer: Cesium.Viewer): Cesium.CustomDataSource {
   if (_dataSource) return _dataSource
   _dataSource = new Cesium.CustomDataSource('satellite-tracker')
 
-  // Entity clustering for performance at high altitude with dense satellites
-  _dataSource.clustering.enabled = true
+  // Configure entity clustering (off by default — toggle via layers:set-clustering)
+  _dataSource.clustering.enabled = false
   _dataSource.clustering.pixelRange = 40
   _dataSource.clustering.minimumClusterSize = 5
   _dataSource.clustering.clusterBillboards = true
