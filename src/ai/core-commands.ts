@@ -1341,7 +1341,6 @@ const setDateCmd: CommandEntry = {
   },
 }
 
-<<<<<<< HEAD
 // --- Atmosphere glow helpers ---
 
 /** Convert CSS color string to Cesium hueShift value (-0.5 to 0.5) */
