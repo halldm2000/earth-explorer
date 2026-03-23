@@ -374,6 +374,21 @@ const toggleLighting: CommandEntry = {
   },
 }
 
+const toggleWater: CommandEntry = {
+  id: 'core:toggle-water',
+  name: 'Toggle water',
+  module: 'core',
+  category: 'view',
+  description: 'Toggle animated ocean water effects on the globe',
+  patterns: ['toggle water', 'water effect', 'ocean effect', 'show water', 'hide water', 'water on', 'water off'],
+  params: [],
+  handler: () => {
+    const viewer = getViewer()
+    if (!viewer) return
+    viewer.scene.globe.showWaterEffect = !viewer.scene.globe.showWaterEffect
+  },
+}
+
 const setTimeOfDay: CommandEntry = {
   id: 'core:set-time',
   name: 'Set time of day',
@@ -1233,7 +1248,7 @@ const setDateCmd: CommandEntry = {
 /** All core commands */
 export const coreCommands: CommandEntry[] = [
   goTo, resetView, zoomIn, zoomOut, zoomTo, faceDirection, lookAt, orbit,
-  toggleBuildings, toggleTerrain, toggleLighting, setTimeOfDay,
+  toggleBuildings, toggleTerrain, toggleLighting, toggleWater, setTimeOfDay,
   baseMap, listBaseMaps,
   muteToggle, whatCanYouDo, fullscreen, listProviders, pullModel, setProvider, setCesiumToken,
   postMessage, readMessages,
