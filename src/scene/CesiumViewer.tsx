@@ -233,6 +233,16 @@ function setupKeyboard(viewer: Cesium.Viewer) {
         duration: 2.0,
       })
     }
+
+    // 2 = switch to 2D map view
+    if (key === '2' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      viewer.scene.morphTo2D(1.0)
+    }
+
+    // 3 = switch to 3D globe view
+    if (key === '3' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      viewer.scene.morphTo3D(1.0)
+    }
   })
 
   document.addEventListener('keyup', (e) => {
