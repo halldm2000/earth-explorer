@@ -1230,6 +1230,53 @@ const setDateCmd: CommandEntry = {
   },
 }
 
+// --- Wireframe mode ---
+
+let _wireframeActive = false
+let _wireframeSavedState: Map<string, { stroke: string; fill: string }> = new Map()
+
+const wireframe: CommandEntry = {
+  id: 'core:wireframe',
+  name: 'Toggle wireframe',
+  module: 'core',
+  category: 'view',
+  description: 'Toggle wireframe mode — outlines only, no polygon fills',
+  patterns: ['wireframe', 'wireframe mode', 'toggle wireframe', 'outline mode', 'outline only'],
+  params: [
+    { name: 'color', type: 'string', required: false, description: 'Outline color (CSS color, default white)' },
+  ],
+  handler: async (params) => {
+    const { getAllLayers, setGeoJsonProperty, getGeoJsonProperties } = await import('@/features/layers/manager')
+    const outlineColor = params.color ? String(params.color) : '#ffffff'
+
+    if (_wireframeActive) {
+      // Toggle off — restore saved state
+      for (const [id, saved] of _wireframeSavedState) {
+        setGeoJsonProperty(id, 'strokeColor', saved.stroke)
+        setGeoJsonProperty(id, 'fillColor', saved.fill)
+      }
+      _wireframeSavedState.clear()
+      _wireframeActive = false
+      return 'Wireframe mode disabled.'
+    }
+
+    // Toggle on — save state and apply wireframe
+    _wireframeSavedState.clear()
+    for (const layer of getAllLayers()) {
+      if (layer.def.kind === 'geojson') {
+        const props = getGeoJsonProperties(layer.def.id)
+        if (props) {
+          _wireframeSavedState.set(layer.def.id, { stroke: props.strokeColor, fill: props.fillColor })
+          setGeoJsonProperty(layer.def.id, 'fillColor', 'transparent')
+          setGeoJsonProperty(layer.def.id, 'strokeColor', outlineColor)
+        }
+      }
+    }
+    _wireframeActive = true
+    return 'Wireframe mode enabled.'
+  },
+}
+
 /** All core commands */
 export const coreCommands: CommandEntry[] = [
   goTo, resetView, zoomIn, zoomOut, zoomTo, faceDirection, lookAt, orbit,
@@ -1239,4 +1286,5 @@ export const coreCommands: CommandEntry[] = [
   postMessage, readMessages,
   listApps, activateAppCmd, deactivateAppCmd,
   playbackCmd, stepForwardCmd, stepBackCmd, getDateCmd, setDateCmd,
+  wireframe,
 ]
