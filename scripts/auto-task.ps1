@@ -337,6 +337,16 @@ function Invoke-ClaudeDocker {
     $claudeHome = Join-Path $env:USERPROFILE ".claude"
     $claudeJson = Join-Path $env:USERPROFILE ".claude.json"
 
+    # Copy host .claude dir to a temp location so container has a writable copy
+    # (mounting read-only prevents Claude Code from creating session-env, etc.)
+    $claudeTemp = Join-Path ([System.IO.Path]::GetTempPath()) "worldscope-claude-$timestamp"
+    if (-not (Test-Path $claudeTemp)) {
+        Copy-Item -Path $claudeHome -Destination $claudeTemp -Recurse -Force
+    }
+    # Also copy .claude.json
+    $claudeJsonTemp = Join-Path $claudeTemp ".claude.json"
+    Copy-Item -Path $claudeJson -Destination $claudeJsonTemp -Force
+
     $dockerArgs = @(
         "run", "--rm",
         # Resource limits
@@ -345,9 +355,9 @@ function Invoke-ClaudeDocker {
         # Mount workspace
         "-v", "${WorktreePath}:/workspace",
         "-v", "${projectRoot}\node_modules:/workspace/node_modules:ro",
-        # Auth
-        "-v", "${claudeHome}:/home/claude/.claude:ro",
-        "-v", "${claudeJson}:/home/claude/.claude.json:ro",
+        # Auth — writable copy so Claude Code can create session-env, shell-snapshots, etc.
+        "-v", "${claudeTemp}:/home/claude/.claude",
+        "-v", "${claudeJsonTemp}:/home/claude/.claude.json",
         "-e", "ANTHROPIC_API_KEY=$env:ANTHROPIC_API_KEY"
     )
 
@@ -471,6 +481,9 @@ $planExit = $script:lastExit
 
 Log "Plan phase: ${planSec}s, exit code $planExit" $(if ($planExit -eq 0) { "Green" } else { "Red" })
 
+# Check for PLAN.md in the worktree
+$planFile = Join-Path $workDir "PLAN.md"
+
 # Show plan
 if (Test-Path $planFile) {
     Log "" "Yellow"
@@ -480,7 +493,6 @@ if (Test-Path $planFile) {
 }
 
 # Gate: if plan failed, abort (also check if PLAN.md exists as success signal)
-$planFile = Join-Path $workDir "PLAN.md"
 if ($planExit -ne 0 -and -not (Test-Path $planFile)) {
     Log "ABORTED: Plan phase failed (no PLAN.md produced). Not proceeding to build." "Red"
     Send-Notification "Auto-Task Failed" "Plan phase failed for: $Task"
@@ -678,6 +690,11 @@ if ($AutoMerge -and ($verdict -eq "PASS" -or $verdict -eq "PASS_WITH_NOTES") -an
     } else {
         Log "Merge failed. Manual resolution required." "Red"
     }
+}
+
+# Clean up temp claude config copy (Docker mode)
+if ($useDocker -and $claudeTemp -and (Test-Path $claudeTemp)) {
+    Remove-Item -Path $claudeTemp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # Record in history

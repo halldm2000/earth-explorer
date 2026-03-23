@@ -20,6 +20,22 @@ RUN useradd -m -s /bin/bash claude && \
     mkdir -p /workspace && \
     chown claude:claude /workspace
 
+# Pre-create directories that Claude Code expects to write to
+# Without these, Bash tool fails with ENOENT on session-env, shell-snapshots, etc.
+RUN mkdir -p /home/claude/.claude/session-env \
+             /home/claude/.claude/shell-snapshots \
+             /home/claude/.claude/cache \
+             /home/claude/.claude/sessions \
+             /home/claude/.claude/plans \
+             /home/claude/.claude/projects \
+             /home/claude/.claude/file-history \
+             /home/claude/.claude/backups \
+    && chown -R claude:claude /home/claude/.claude
+
+# Configure git for commits inside the container
+RUN su claude -c 'git config --global user.email "auto-task@worldscope.dev"' && \
+    su claude -c 'git config --global user.name "Worldscope Auto-Task"'
+
 USER claude
 WORKDIR /workspace
 
