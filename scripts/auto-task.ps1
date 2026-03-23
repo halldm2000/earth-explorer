@@ -321,8 +321,13 @@ function Invoke-Claude {
     if ($Turns -gt 0) { $claudeArgs += @("--max-turns", $Turns) }
 
     Push-Location $WorkDir
-    & claude @claudeArgs 2>&1 | Tee-Object -FilePath $logFile -Append
+    # Run claude and capture output to file + console
+    # Use a temp file to avoid Tee-Object clobbering $LASTEXITCODE
+    $tempOut = [System.IO.Path]::GetTempFileName()
+    & claude @claudeArgs 2>&1 > $tempOut
     $script:lastExit = $LASTEXITCODE
+    Get-Content $tempOut | Tee-Object -FilePath $logFile -Append
+    Remove-Item $tempOut -ErrorAction SilentlyContinue
     Pop-Location
 }
 
@@ -361,8 +366,12 @@ function Invoke-ClaudeDocker {
     # We pass extra args: [--max-turns N] "prompt"
     $dockerArgs += @("worldscope-task") + $claudeExtraArgs
 
-    & docker @dockerArgs 2>&1 | Tee-Object -FilePath $logFile -Append
+    # Capture exit code before piping
+    $tempOut = [System.IO.Path]::GetTempFileName()
+    & docker @dockerArgs 2>&1 > $tempOut
     $script:lastExit = $LASTEXITCODE
+    Get-Content $tempOut | Tee-Object -FilePath $logFile -Append
+    Remove-Item $tempOut -ErrorAction SilentlyContinue
 }
 
 function Run-Phase {
@@ -373,7 +382,7 @@ function Run-Phase {
     } else {
         Invoke-Claude -Prompt $Prompt -WorkDir $workDir -Turns $Turns
     }
-    return $script:lastExit
+    # Exit code is in $script:lastExit (set by Invoke-Claude/Docker)
 }
 
 function Get-DiffStats {
@@ -407,8 +416,11 @@ if (-not $NoWorktree) {
     }
 
     # Symlink node_modules for non-Docker mode
+    # Use a junction so the worktree can find dependencies without npm install
     if (-not $useDocker -and (Test-Path "$projectRoot\node_modules")) {
         New-Item -ItemType Junction -Path "$worktreePath\node_modules" -Target "$projectRoot\node_modules" -Force | Out-Null
+        # Re-set Dropbox ignore flag (junction creation can reset it)
+        powershell -Command "Set-Content -Path '$projectRoot\node_modules' -Stream com.dropbox.ignored -Value 1" 2>$null
     }
 }
 
@@ -453,13 +465,13 @@ Log "+==========================================+" "Yellow"
 Log "Analyzing codebase and designing approach..." "White"
 
 $planSec = Measure-Phase {
-    $script:planExit = Run-Phase -Prompt $planPrompt -Phase "PLAN" -Turns $planMaxTurns
+    Run-Phase -Prompt $planPrompt -Phase "PLAN" -Turns $planMaxTurns
 }
+$planExit = $script:lastExit
 
-Log "Plan phase: ${planSec}s, exit code $($script:planExit)" $(if ($script:planExit -eq 0) { "Green" } else { "Red" })
+Log "Plan phase: ${planSec}s, exit code $planExit" $(if ($planExit -eq 0) { "Green" } else { "Red" })
 
 # Show plan
-$planFile = Join-Path $workDir "PLAN.md"
 if (Test-Path $planFile) {
     Log "" "Yellow"
     Log "-- PLAN --" "Yellow"
@@ -467,9 +479,10 @@ if (Test-Path $planFile) {
     Log "-- END PLAN --" "Yellow"
 }
 
-# Gate: if plan failed, abort
-if ($script:planExit -ne 0) {
-    Log "ABORTED: Plan phase failed. Not proceeding to build." "Red"
+# Gate: if plan failed, abort (also check if PLAN.md exists as success signal)
+$planFile = Join-Path $workDir "PLAN.md"
+if ($planExit -ne 0 -and -not (Test-Path $planFile)) {
+    Log "ABORTED: Plan phase failed (no PLAN.md produced). Not proceeding to build." "Red"
     Send-Notification "Auto-Task Failed" "Plan phase failed for: $Task"
 
     # Record in history
@@ -488,10 +501,11 @@ Log "+==========================================+" "Cyan"
 Log "Implementing plan..." "White"
 
 $buildSec = Measure-Phase {
-    $script:buildExit = Run-Phase -Prompt $buildPrompt -Phase "BUILD" -Turns $MaxTurns
+    Run-Phase -Prompt $buildPrompt -Phase "BUILD" -Turns $MaxTurns
 }
+$buildExit = $script:lastExit
 
-Log "Build phase: ${buildSec}s, exit code $($script:buildExit)" $(if ($script:buildExit -eq 0) { "Green" } else { "Red" })
+Log "Build phase: ${buildSec}s, exit code $buildExit" $(if ($buildExit -eq 0) { "Green" } else { "Red" })
 
 # Diff size guard
 if (-not $NoWorktree) {
@@ -534,10 +548,11 @@ if (-not $SkipReview) {
     Log "Reviewing work quality..." "White"
 
     $reviewSec = Measure-Phase {
-        $script:reviewExit = Run-Phase -Prompt $reviewPrompt -Phase "REVIEW" -Turns $reviewMaxTurns
+        Run-Phase -Prompt $reviewPrompt -Phase "REVIEW" -Turns $reviewMaxTurns
     }
+    $reviewExit = $script:lastExit
 
-    Log "Review phase: ${reviewSec}s, exit code $($script:reviewExit)" $(if ($script:reviewExit -eq 0) { "Green" } else { "Red" })
+    Log "Review phase: ${reviewSec}s, exit code $reviewExit" $(if ($reviewExit -eq 0) { "Green" } else { "Red" })
 
     # Display scorecard
     if (Test-Path $reportFile) {
@@ -583,11 +598,12 @@ if (-not $SkipReview) {
         $fixPrompt = $fixPromptTemplate -replace '\{SCORECARD\}', $scorecard
 
         $fixPhaseSec = Measure-Phase {
-            $script:fixExit = Run-Phase -Prompt $fixPrompt -Phase "FIX" -Turns $fixMaxTurns
+            Run-Phase -Prompt $fixPrompt -Phase "FIX" -Turns $fixMaxTurns
         }
+        $fixExit = $script:lastExit
         $fixSec += $fixPhaseSec
 
-        Log "Fix phase: ${fixPhaseSec}s, exit code $($script:fixExit)" $(if ($script:fixExit -eq 0) { "Green" } else { "Red" })
+        Log "Fix phase: ${fixPhaseSec}s, exit code $fixExit" $(if ($fixExit -eq 0) { "Green" } else { "Red" })
 
         # Re-review after fix
         Log "Re-reviewing after fix..." "Magenta"
@@ -595,8 +611,9 @@ if (-not $SkipReview) {
         $reReviewPrompt = $reviewPrompt -replace [regex]::Escape("$reportDir\$timestamp-review.md"), $reportFile
 
         $reReviewSec = Measure-Phase {
-            $script:reReviewExit = Run-Phase -Prompt $reReviewPrompt -Phase "REVIEW" -Turns $reviewMaxTurns
+            Run-Phase -Prompt $reReviewPrompt -Phase "REVIEW" -Turns $reviewMaxTurns
         }
+        $reReviewExit = $script:lastExit
         $reviewSec += $reReviewSec
 
         if (Test-Path $reportFile) {
