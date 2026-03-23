@@ -1,0 +1,107 @@
+﻿11:35:47 Preparing worktree (new branch 'fog-atmosphere')
+11:35:47 HEAD is now at 1d5beca Expand Weather App spec in APP_IDEAS.md (Windy-style)
+11:35:48 
+11:35:48 ================================================================
+11:35:48   AUTO-TASK: Add atmosphere and fog tuning commands. In src/ai/core-commands.ts, add two new commands: 1) core:set-fog with params density (number 0-1, default 0.0002) and enabled (boolean) that controls viewer.scene.fog.density and viewer.scene.fog.enabled. 2) core:set-atmosphere with params brightness (number -1 to 1) and saturation (number -1 to 1) that controls viewer.scene.atmosphere.brightnessShift and saturationShift. Follow existing command patterns in the file.
+11:35:48   Mode: DOCKER (sandboxed, 4g RAM, 2 CPUs)
+11:35:48   Branch: fog-atmosphere
+11:35:48   Criteria: 1. set-fog command adjusts fog density 2. set-atmosphere adjusts brightness and saturation 3. TypeScript compiles 4. Commands appear in MCP tools
+11:35:48   Log: C:\Users\halld\Dropbox\WORK_NVIDIA\NV_PROJECTS\worldscope\scripts\reports\20260323-113544-log.txt
+11:35:48 ================================================================
+11:35:48 
+11:35:48 +==========================================+
+11:35:48 |  PHASE 1: PLAN                           |
+11:35:48 +==========================================+
+11:35:48 Analyzing codebase and designing approach...
+Plan saved to `PLAN.md`. Key points:
+
+- **Single file change**: `src/ai/core-commands.ts` ΓÇö add two `CommandEntry` constants and register them in the export array
+- **Pattern**: Follows `toggleLighting` / `setTimeOfDay` style ΓÇö get viewer, guard null, set Cesium properties, return status string
+- **`core:set-fog`**: params `density` (0-1, clamped) and `enabled` (boolean), controls `viewer.scene.fog.*`
+- **`core:set-atmosphere`**: params `brightness` (-1 to 1) and `saturation` (-1 to 1), controls `viewer.scene.atmosphere.brightnessShift/saturationShift`
+- **Edge cases**: clamp out-of-range values, handle NaN, return current values when no params given
+- **Complexity**: Low ΓÇö no new deps, no architectural changes
+11:37:23 Plan phase: 95s, exit code 0
+11:37:23 
+11:37:23 -- PLAN --
+11:37:23 # Implementation Plan: Atmosphere and Fog Tuning Commands
+11:37:23 
+11:37:23 ## Goal
+11:37:23 
+11:37:23 Add two new core commands (`core:set-fog` and `core:set-atmosphere`) that let users control Cesium's fog density/enabled state and atmosphere brightness/saturation shifts via the AI command system.
+11:37:23 
+11:37:23 ## Files to Change
+11:37:23 
+11:37:23 | File | Action | Description |
+11:37:23 |------|--------|-------------|
+11:37:23 | `src/ai/core-commands.ts` | MODIFY | Add `setFog` and `setAtmosphere` command definitions; add them to the `coreCommands` export array |
+11:37:23 
+11:37:23 No other files need changes. The command registry, types, and MCP tool generation all work automatically from the `coreCommands` array.
+11:37:23 
+11:37:23 ## Approach
+11:37:23 
+11:37:23 ### Step 1: Add `setFog` command (~line 375, after `toggleLighting`)
+11:37:23 
+11:37:23 Define a `const setFog: CommandEntry` following the existing view command pattern:
+11:37:23 
+11:37:23 - **id**: `'core:set-fog'`
+11:37:23 - **category**: `'view'`
+11:37:23 - **module**: `'core'`
+11:37:23 - **params**:
+11:37:23   - `density`: type `'number'`, required `false`, range `[0, 1]`, description mentions default 0.0002
+11:37:23   - `enabled`: type `'boolean'`, required `false`
+11:37:23 - **patterns**: `['set fog {density}', 'fog density {density}', 'fog on', 'fog off', 'toggle fog', 'set fog']`
+11:37:23 - **handler logic**:
+11:37:23   1. `getViewer()` â€” bail if null
+11:37:23   2. If `enabled` param is provided (not undefined), set `viewer.scene.fog.enabled = Boolean(params.enabled)`
+11:37:23   3. If `density` param is provided, clamp to [0, 1] via `Math.max(0, Math.min(1, Number(params.density)))`, set `viewer.scene.fog.density = clampedValue`
+11:37:23   4. Return a status string like `"Fog: enabled=${viewer.scene.fog.enabled}, density=${viewer.scene.fog.density}"`
+11:37:23 
+11:37:23 ### Step 2: Add `setAtmosphere` command (right after `setFog`)
+11:37:23 
+11:37:23 Define a `const setAtmosphere: CommandEntry`:
+11:37:23 
+11:37:23 - **id**: `'core:set-atmosphere'`
+11:37:23 - **category**: `'view'`
+11:37:23 - **module**: `'core'`
+11:37:23 - **params**:
+11:37:23   - `brightness`: type `'number'`, required `false`, range `[-1, 1]`
+11:37:23   - `saturation`: type `'number'`, required `false`, range `[-1, 1]`
+11:37:23 - **patterns**: `['set atmosphere', 'atmosphere brightness {brightness}', 'atmosphere saturation {saturation}', 'atmosphere {brightness} {saturation}']`
+11:37:23 - **handler logic**:
+11:37:23   1. `getViewer()` â€” bail if null
+11:37:23   2. If `brightness` provided, clamp to [-1, 1], set `viewer.scene.atmosphere.brightnessShift`
+11:37:23   3. If `saturation` provided, clamp to [-1, 1], set `viewer.scene.atmosphere.saturationShift`
+11:37:23   4. Return status string with current values of both shifts
+11:37:23 
+11:37:23 ### Step 3: Register in `coreCommands` array
+11:37:23 
+11:37:23 Add `setFog, setAtmosphere` to the export array at the end of the file, alongside the other view commands (after `toggleLighting`).
+11:37:23 
+11:37:23 ## Edge Cases
+11:37:23 
+11:37:23 1. **No params provided**: Both commands should handle the case where no params are given. In this case, just return the current values without modifying anything (read-only query).
+11:37:23 2. **Out-of-range values**: Clamp `density` to [0, 1] and `brightness`/`saturation` to [-1, 1]. Don't throw errors.
+11:37:23 3. **No viewer**: Follow existing pattern â€” `if (!viewer) return` (or return `'No viewer available'`).
+11:37:23 4. **Non-numeric input**: Use `Number()` conversion; if `NaN`, skip that param (don't set it).
+11:37:23 5. **Fog enabled/disabled interaction**: Setting density while fog is disabled should still work (Cesium stores the value regardless). User can later enable fog and see the density they set.
+11:37:23 
+11:37:23 ## Testing
+11:37:23 
+11:37:23 1. **Manual via MCP tools**: Use `core_set-fog` with `{ density: 0.005, enabled: true }` â€” verify fog appears denser on the globe via screenshot.
+11:37:23 2. **Fog off**: Call with `{ enabled: false }` â€” fog disappears.
+11:37:23 3. **Atmosphere**: Call `core_set-atmosphere` with `{ brightness: 0.5 }` â€” atmosphere gets brighter. Call with `{ saturation: -0.5 }` â€” atmosphere desaturates.
+11:37:23 4. **No params**: Call both commands with empty params â€” should return current values without changing anything.
+11:37:23 5. **Boundary values**: Test density=0, density=1, brightness=-1, brightness=1, saturation=-1, saturation=1.
+11:37:23 6. **Commands appear in help**: Run the "what can you do" command and verify both new commands show up.
+11:37:23 7. **MCP tool generation**: Verify the new commands appear as MCP tools (automatic from registry).
+11:37:23 
+11:37:23 ## Estimated Complexity
+11:37:23 
+11:37:23 **Low** â€” Two straightforward command definitions following an established pattern. No new dependencies, no architectural changes, no async operations.
+11:37:23 -- END PLAN --
+11:37:23 
+11:37:23 +==========================================+
+11:37:23 |  PHASE 2: BUILD                          |
+11:37:23 +==========================================+
+11:37:23 Implementing plan...

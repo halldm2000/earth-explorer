@@ -27,7 +27,7 @@ interface SavedState {
     saturationShift: number
     brightnessShift: number
   }
-  geoJsonColors: Map<string, string>
+  geoJsonColors: Map<string, { stroke: string; fill: string }>
   edgeStage: Cesium.PostProcessStage | null
 }
 
@@ -56,11 +56,11 @@ const extension: Extension = {
 
     // ── Capture pre-activation state ──
 
-    const savedGeoJsonColors = new Map<string, string>()
+    const savedGeoJsonColors = new Map<string, { stroke: string; fill: string }>()
     for (const layer of getAllLayers()) {
       if (layer.def.kind === 'geojson' && layer.visible) {
         const props = getGeoJsonProperties(layer.def.id)
-        if (props) savedGeoJsonColors.set(layer.def.id, props.strokeColor)
+        if (props) savedGeoJsonColors.set(layer.def.id, { stroke: props.strokeColor, fill: props.fillColor })
       }
     }
 
@@ -131,10 +131,11 @@ const extension: Extension = {
     scene.atmosphere.saturationShift = -0.3
     scene.atmosphere.brightnessShift = -0.5
 
-    // Recolor existing GeoJSON layers
+    // Recolor existing GeoJSON layers — green outlines, no fill (wireframe)
     for (const layer of getAllLayers()) {
       if (layer.def.kind === 'geojson' && layer.visible) {
         setGeoJsonProperty(layer.def.id, 'strokeColor', NVIDIA_GREEN)
+        setGeoJsonProperty(layer.def.id, 'fillColor', 'transparent')
       }
     }
 
@@ -213,9 +214,10 @@ const extension: Extension = {
     // Restore base map (async, fire-and-forget)
     setBaseMapStyle(_savedState.baseMap as BaseMapStyle)
 
-    // Restore GeoJSON stroke colors
-    for (const [id, color] of _savedState.geoJsonColors) {
-      setGeoJsonProperty(id, 'strokeColor', color)
+    // Restore GeoJSON stroke and fill colors
+    for (const [id, saved] of _savedState.geoJsonColors) {
+      setGeoJsonProperty(id, 'strokeColor', saved.stroke)
+      setGeoJsonProperty(id, 'fillColor', saved.fill)
     }
 
     _savedState = null

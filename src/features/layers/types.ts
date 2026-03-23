@@ -87,12 +87,14 @@ export const DEFAULT_LAYER_PROPERTIES: LayerProperties = {
 export interface GeoJsonProperties {
   strokeColor: string   // CSS hex color
   strokeWidth: number   // pixels, 0.5-10
+  fillColor: string     // CSS color (e.g. 'transparent', '#ff0000')
   alpha: number         // 0-1, default 1
 }
 
 export const DEFAULT_GEOJSON_PROPERTIES: GeoJsonProperties = {
   strokeColor: '#ffffff',
   strokeWidth: 1,
+  fillColor: 'transparent',
   alpha: 1,
 }
 

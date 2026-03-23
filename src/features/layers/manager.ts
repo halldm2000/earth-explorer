@@ -31,6 +31,7 @@ export function registerLayer(def: LayerDef): void {
     layer.geoJsonProperties = {
       strokeColor: def.style?.stroke ?? DEFAULT_GEOJSON_PROPERTIES.strokeColor,
       strokeWidth: def.style?.strokeWidth ?? DEFAULT_GEOJSON_PROPERTIES.strokeWidth,
+      fillColor: def.style?.fill ?? DEFAULT_GEOJSON_PROPERTIES.fillColor,
       alpha: DEFAULT_GEOJSON_PROPERTIES.alpha,
     }
   }
@@ -492,6 +493,7 @@ export function resetLayerProperties(id: string): boolean {
     layer.geoJsonProperties = {
       strokeColor: layer.def.style?.stroke ?? DEFAULT_GEOJSON_PROPERTIES.strokeColor,
       strokeWidth: layer.def.style?.strokeWidth ?? DEFAULT_GEOJSON_PROPERTIES.strokeWidth,
+      fillColor: layer.def.style?.fill ?? DEFAULT_GEOJSON_PROPERTIES.fillColor,
       alpha: DEFAULT_GEOJSON_PROPERTIES.alpha,
     }
     applyGeoJsonProperties(layer)
@@ -509,6 +511,9 @@ function applyGeoJsonProperties(layer: LiveLayer): void {
   const baseColor = Cesium.Color.fromCssColorString(p.strokeColor).withAlpha(p.alpha)
   const material = new Cesium.ColorMaterialProperty(baseColor)
 
+  const fillColor = Cesium.Color.fromCssColorString(p.fillColor)
+  const fillMaterial = new Cesium.ColorMaterialProperty(fillColor)
+
   for (const entity of layer.datasource.entities.values) {
     if (entity.polyline) {
       entity.polyline.material = material
@@ -517,6 +522,7 @@ function applyGeoJsonProperties(layer: LiveLayer): void {
     if (entity.polygon) {
       entity.polygon.outlineColor = new Cesium.ConstantProperty(baseColor)
       entity.polygon.outlineWidth = new Cesium.ConstantProperty(p.strokeWidth)
+      entity.polygon.material = fillMaterial
     }
   }
 }
@@ -596,9 +602,12 @@ async function loadGeoJson(layer: LiveLayer, viewer: Cesium.Viewer): Promise<voi
     if (entity.polygon) {
       entity.polygon.outlineColor = new Cesium.ConstantProperty(color)
       entity.polygon.outlineWidth = new Cesium.ConstantProperty(width)
-      entity.polygon.material = style.fill
-        ? new Cesium.ColorMaterialProperty(Cesium.Color.fromCssColorString(style.fill))
-        : new Cesium.ColorMaterialProperty(Cesium.Color.TRANSPARENT)
+      const fill = p
+        ? Cesium.Color.fromCssColorString(p.fillColor)
+        : style.fill
+          ? Cesium.Color.fromCssColorString(style.fill)
+          : Cesium.Color.TRANSPARENT
+      entity.polygon.material = new Cesium.ColorMaterialProperty(fill)
     }
   }
 

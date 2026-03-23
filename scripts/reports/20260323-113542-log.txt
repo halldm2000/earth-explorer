@@ -1,0 +1,137 @@
+﻿11:35:44 Preparing worktree (new branch 'shadow-mapping')
+11:35:44 HEAD is now at 1d5beca Expand Weather App spec in APP_IDEAS.md (Windy-style)
+11:35:45 
+11:35:45 ================================================================
+11:35:45   AUTO-TASK: Add shadow mapping support. In src/scene/CesiumViewer.tsx, enable shadows: viewer.shadows = true, viewer.shadowMap.softShadows = true, viewer.shadowMap.size = 4096. Only enable when the quality preset is quality not performance. Add a command core:toggle-shadows in src/ai/core-commands.ts that toggles viewer.shadows on/off. Check engine.ts applyQualityPreset to see if shadows are already handled there and integrate accordingly.
+11:35:45   Mode: DOCKER (sandboxed, 4g RAM, 2 CPUs)
+11:35:45   Branch: shadow-mapping
+11:35:45   Criteria: 1. Shadows visible on terrain and buildings 2. Toggle command works 3. Performance preset keeps shadows off 4. TypeScript compiles
+11:35:45   Log: C:\Users\halld\Dropbox\WORK_NVIDIA\NV_PROJECTS\worldscope\scripts\reports\20260323-113542-log.txt
+11:35:45 ================================================================
+11:35:45 
+11:35:45 +==========================================+
+11:35:45 |  PHASE 1: PLAN                           |
+11:35:45 +==========================================+
+11:35:45 Analyzing codebase and designing approach...
+Plan written to `PLAN.md`.
+
+**Key finding:** Shadow mapping is already fully implemented in `engine.ts` ΓÇö the quality presets configure `viewer.shadows`, `shadowMap.size`, `shadowMap.softShadows`, and `shadowMap.darkness`. The `quality` preset already uses the exact values from the task (shadows on, size 4096, soft shadows).
+
+**What's actually needed:**
+1. **`CesiumViewer.tsx`** ΓÇö Add `_shadows` state + `toggleSceneShadows()` export (following the `_lighting`/`_atmosphere` pattern), sync state after `applyQualityPreset` runs
+2. **`core-commands.ts`** ΓÇö Add `toggleShadows` command entry + register it in the `coreCommands` array
+
+Estimated complexity: **Low** ΓÇö it's wiring up a toggle for functionality that's already configured.
+11:37:21 Plan phase: 95.2s, exit code 0
+11:37:21 
+11:37:21 -- PLAN --
+11:37:21 # Implementation Plan: Shadow Mapping Support
+11:37:21 
+11:37:21 ## Goal
+11:37:21 
+11:37:21 Add shadow mapping to the CesiumJS viewer, controlled by quality presets (on for `quality`/`ultra`, off for `performance`), with a `core:toggle-shadows` command for manual toggling.
+11:37:21 
+11:37:21 ## Files to Change
+11:37:21 
+11:37:21 | File | Action | Description |
+11:37:21 |------|--------|-------------|
+11:37:21 | `src/scene/engine.ts` | MODIFY | Already handles shadows in `applyQualityPreset` â€” no changes needed here |
+11:37:21 | `src/scene/CesiumViewer.tsx` | MODIFY | Add shadow toggle state + export functions (following lighting/atmosphere pattern) |
+11:37:21 | `src/ai/core-commands.ts` | MODIFY | Add `core:toggle-shadows` command + register it in `coreCommands` array |
+11:37:21 
+11:37:21 ## Approach
+11:37:21 
+11:37:21 ### Key Finding: Shadows are already fully configured in `engine.ts`
+11:37:21 
+11:37:21 `applyQualityPreset()` (engine.ts:445-501) already sets:
+11:37:21 - `viewer.shadows = cfg.shadows`
+11:37:21 - `viewer.shadowMap.size = cfg.shadowSize`
+11:37:21 - `viewer.shadowMap.softShadows = cfg.softShadows`
+11:37:21 - `viewer.shadowMap.darkness = cfg.shadowDarkness`
+11:37:21 
+11:37:21 The quality configs (engine.ts:374-435) already define:
+11:37:21 - `performance`: shadows off, size 2048
+11:37:21 - `quality`: shadows on, size 4096, soft shadows
+11:37:21 - `ultra`: shadows on, size 8192, soft shadows
+11:37:21 
+11:37:21 **No changes needed in `engine.ts` or `CesiumViewer.tsx` for initial shadow setup** â€” it's already wired up via `applyQualityPreset(initialPreset)` called on line 111 of CesiumViewer.tsx.
+11:37:21 
+11:37:21 ### Step 1: Add shadow toggle state to CesiumViewer.tsx
+11:37:21 
+11:37:21 Follow the existing pattern used for `_lighting` and `_atmosphere` (lines 11-36):
+11:37:21 
+11:37:21 1. Add `let _shadows = false` module-level state variable (initial false; will be set when preset is applied)
+11:37:21 2. Add `_shadows` to the `getSceneToggles()` return value
+11:37:21 3. Add `toggleSceneShadows()` export function that toggles `viewer.shadows` and updates `_shadows`, calls `notifyScene()`
+11:37:21 
+11:37:21 **Alternative (simpler):** Since the toggle command can just read/write `viewer.shadows` directly, we could skip the scene toggle state entirely and just implement the command. However, the toolbar may need the toggle state, so following the existing pattern is safer.
+11:37:21 
+11:37:21 **Decision:** Add the scene toggle state to stay consistent with lighting/atmosphere. The toolbar already uses `getSceneToggles()`/`subscribeScene()`, so adding shadows there means the UI can show shadow state for free.
+11:37:21 
+11:37:21 ### Step 2: Add `core:toggle-shadows` command in core-commands.ts
+11:37:21 
+11:37:21 Following the `toggleLighting` pattern (lines 362-375):
+11:37:21 
+11:37:21 ```ts
+11:37:21 const toggleShadows: CommandEntry = {
+11:37:21   id: 'core:toggle-shadows',
+11:37:21   name: 'Toggle shadows',
+11:37:21   module: 'core',
+11:37:21   category: 'view',
+11:37:21   description: 'Toggle shadow mapping on/off',
+11:37:21   patterns: ['toggle shadows', 'shadows on', 'shadows off', 'enable shadows', 'disable shadows'],
+11:37:21   params: [],
+11:37:21   handler: () => {
+11:37:21     toggleSceneShadows()
+11:37:21   },
+11:37:21 }
+11:37:21 ```
+11:37:21 
+11:37:21 Import `toggleSceneShadows` from `@/scene/CesiumViewer`.
+11:37:21 
+11:37:21 Add `toggleShadows` to the `coreCommands` array (line 1236, alongside `toggleLighting`).
+11:37:21 
+11:37:21 ### Step 3: Sync shadow state on preset apply
+11:37:21 
+11:37:21 When `applyQualityPreset` runs, it sets `viewer.shadows` but doesn't update the `_shadows` state variable in CesiumViewer.tsx. Two options:
+11:37:21 
+11:37:21 - **Option A:** Export a `setShadowState(on: boolean)` from CesiumViewer.tsx and call it from `applyQualityPreset` in engine.ts (creates circular dependency risk).
+11:37:21 - **Option B:** In `toggleSceneShadows`, read current state from `viewer.shadows` rather than tracking separately. Then `getSceneToggles` also reads from the viewer directly.
+11:37:21 - **Option C:** Initialize `_shadows` from viewer state when `getSceneToggles` is called.
+11:37:21 
+11:37:21 **Decision:** Option B is cleanest â€” read `viewer.shadows` directly in `getSceneToggles()` just like how lighting reads `viewer.scene.globe.enableLighting`. The `_shadows` variable is unnecessary if we read from the viewer. But the existing pattern uses module variables for `_lighting` and `_atmosphere`. For consistency, add `_shadows` and keep it in sync in the toggle function. Initialize it after `applyQualityPreset` runs in the init function.
+11:37:21 
+11:37:21 Actually, looking more closely: `_lighting` is set in `toggleSceneLighting` but not when the viewer first initializes lighting (line 101 sets `enableLighting = true` and `_lighting` starts as `true` â€” they're in sync by default). For shadows, `_shadows` starts `false` and the preset may enable them. We need to sync after `applyQualityPreset`.
+11:37:21 
+11:37:21 **Simplest approach:** After `applyQualityPreset(initialPreset)` on line 111, add: `_shadows = viewer.shadows` (or import a sync function). But `_shadows` is in CesiumViewer.tsx and the init runs there too, so we can just set it directly:
+11:37:21 
+11:37:21 ```ts
+11:37:21 // After applyQualityPreset(initialPreset) on line 111:
+11:37:21 _shadows = viewer.shadows
+11:37:21 ```
+11:37:21 
+11:37:21 ## Edge Cases
+11:37:21 
+11:37:21 1. **Viewer not initialized:** All toggle functions already guard with `if (!viewer) return` â€” follow same pattern.
+11:37:21 2. **Shadow map not available:** `applyQualityPreset` already guards with `if (_viewer.shadowMap)`. The toggle should do the same, though `viewer.shadowMap` should always exist when `viewer` exists.
+11:37:21 3. **Performance impact:** Shadows are GPU-intensive. The preset system already handles this (off for performance). The manual toggle gives users escape hatch. No additional safeguards needed.
+11:37:21 4. **State drift:** If user manually toggles shadows off but then switches to `quality` preset, the preset will re-enable shadows. This is correct behavior â€” presets should be authoritative.
+11:37:21 
+11:37:21 ## Testing
+11:37:21 
+11:37:21 1. **Quality preset `performance`:** Verify shadows are off (no shadow rendering visible on buildings/terrain)
+11:37:21 2. **Quality preset `quality`/`ultra`:** Verify shadows are on (buildings cast shadows based on sun position)
+11:37:21 3. **Toggle command:** Use AI chat or MCP tool `core:toggle-shadows` â€” shadows should toggle on/off
+11:37:21 4. **Scene toggles:** Check that `getSceneToggles()` returns correct `shadows` state after toggling
+11:37:21 5. **Preset override:** Toggle shadows off manually, then switch to `quality` preset â€” shadows should re-enable
+11:37:21 6. **Time of day:** Shadows should move with sun position (already handled by Cesium when `enableLighting` is on)
+11:37:21 
+11:37:21 ## Estimated Complexity
+11:37:21 
+11:37:21 **Low** â€” Shadow infrastructure already exists in engine.ts quality presets. This task is just adding a manual toggle command following well-established patterns.
+11:37:21 -- END PLAN --
+11:37:21 
+11:37:21 +==========================================+
+11:37:21 |  PHASE 2: BUILD                          |
+11:37:21 +==========================================+
+11:37:21 Implementing plan...

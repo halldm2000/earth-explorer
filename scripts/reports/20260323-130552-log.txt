@@ -1,0 +1,294 @@
+﻿13:05:54 Preparing worktree (new branch 'presentation-mode')
+13:05:54 HEAD is now at b20633d Tune Tron Mode: dark globe with green contour lines, not green wash
+13:05:54 
+13:05:54 ================================================================
+13:05:54   AUTO-TASK: Add a screenshot/presentation mode. Create a new command core:presentation-mode in src/ai/core-commands.ts that hides all UI chrome (sidebar, toolbar, app dock, chat panel, status strip, bottom bar, global controls) leaving only the bare globe visible. Pressing Escape or running the command again restores the UI. Implementation: toggle a CSS class on the root app container that sets display:none on all UI overlay elements. Store the state in a module-level boolean. Also add a keyboard shortcut: pressing F11 or P (with no modifiers, not in text input) toggles presentation mode. Add the key handler in CesiumViewer.tsx setupKeyboard().
+13:05:54   Mode: DOCKER (sandboxed, 4g RAM, 2 CPUs)
+13:05:54   Branch: presentation-mode
+13:05:54   Criteria: 1. Command hides all UI elements 2. Only globe visible in presentation mode 3. Escape or repeat command restores UI 4. Keyboard shortcut works 5. TypeScript compiles
+13:05:54   Log: C:\Users\halld\Dropbox\WORK_NVIDIA\NV_PROJECTS\worldscope\scripts\reports\20260323-130552-log.txt
+13:05:54 ================================================================
+13:05:54 
+13:05:54 +==========================================+
+13:05:54 |  PHASE 1: PLAN                           |
+13:05:54 +==========================================+
+13:05:54 Analyzing codebase and designing approach...
+Plan saved to `PLAN.md`. Here's the summary:
+
+**4 files to change**, all modifications (no new files):
+
+| File | Change |
+|------|--------|
+| `src/app/App.tsx` | Wrap non-globe components in `<div data-ui-chrome>` |
+| `src/app/global.css` | Add `#root.presentation-mode [data-ui-chrome] { display: none !important }` |
+| `src/ai/core-commands.ts` | Add module-level toggle state + `core:presentation-mode` command |
+| `src/scene/CesiumViewer.tsx` | Add P, F11, and Escape key handlers in `setupKeyboard()` |
+
+**Key design decisions:**
+- CSS class toggle on `#root` rather than per-component state ΓÇö all overlays use `position: fixed`, so a single wrapper div + `display: none` hides them all
+- Module-level boolean (not Zustand) ΓÇö matches the pattern used by `isOrbiting()` in engine.ts; no React re-renders needed
+- Escape only exits when presentation mode is active, so it doesn't interfere with other escape handlers
+- F11 claims presentation mode and `preventDefault`s the browser fullscreen (the separate `core:fullscreen` command still exists)
+
+**Estimated complexity: Low** ΓÇö straightforward CSS toggle, one command entry, three keyboard bindings.
+13:08:32 Plan phase: 157.6s, exit code 0
+13:08:32 
+13:08:32 -- PLAN --
+13:08:32 # Implementation Plan: Presentation Mode (core:presentation-mode)
+13:08:32 
+13:08:32 ## Goal
+13:08:32 Add a presentation/screenshot mode that hides all UI chrome (overlays, panels, bars) leaving only the bare CesiumJS globe visible. Toggled via command, Escape key, or F11/P keyboard shortcuts.
+13:08:32 
+13:08:32 ## Files to Change
+13:08:32 | File | Action | Description |
+13:08:32 |------|--------|-------------|
+13:08:32 | `src/app/global.css` | MODIFY | Add `.presentation-mode` CSS rule to hide all UI overlays |
+13:08:32 | `src/app/App.tsx` | MODIFY | Wrap non-globe UI in a container div with a `data-ui-chrome` attribute |
+13:08:32 | `src/ai/core-commands.ts` | MODIFY | Add `core:presentation-mode` command entry |
+13:08:32 | `src/scene/CesiumViewer.tsx` | MODIFY | Add F11/P keyboard shortcut in `setupKeyboard()` |
+13:08:32 
+13:08:32 ## Approach
+13:08:32 
+13:08:32 ### Step 1: UI Chrome Wrapper in App.tsx
+13:08:32 
+13:08:32 Wrap all overlay components (everything except `<CesiumViewer />`) in a single `<div data-ui-chrome>`:
+13:08:32 
+13:08:32 ```tsx
+13:08:32 return (
+13:08:32   <>
+13:08:32     <CesiumViewer />
+13:08:32     <div data-ui-chrome>
+13:08:32       <TimeSlider />
+13:08:32       <BottomBar />
+13:08:32       <LayerPanel />
+13:08:32       <LegendPanel />
+13:08:32       <SatelliteInfo />
+13:08:32       <EarthquakeInfo />
+13:08:32       <ShipInfo />
+13:08:32       <HurricanePanel open={hurricanePanelOpen} onClose={() => setHurricanePanelOpen(false)} />
+13:08:32       <ChatPanel />
+13:08:32       <ExtensionCatalog />
+13:08:32     </div>
+13:08:32   </>
+13:08:32 )
+13:08:32 ```
+13:08:32 
+13:08:32 The wrapper div needs no layout styles â€” all children use `position: fixed` so it's purely a grouping element.
+13:08:32 
+13:08:32 ### Step 2: CSS Rule in global.css
+13:08:32 
+13:08:32 Add a rule that hides the chrome wrapper when `#root` has the class `presentation-mode`:
+13:08:32 
+13:08:32 ```css
+13:08:32 /* Presentation mode: hide all UI chrome, show only the globe */
+13:08:32 #root.presentation-mode [data-ui-chrome] {
+13:08:32   display: none !important;
+13:08:32 }
+13:08:32 ```
+13:08:32 
+13:08:32 This is the simplest approach â€” one class toggle on `#root` controls everything. No need to modify individual components or fight inline styles.
+13:08:32 
+13:08:32 ### Step 3: Presentation Mode State & Toggle Module
+13:08:32 
+13:08:32 Add a module-level boolean and toggle function in `core-commands.ts` (co-located with the command, no separate file needed):
+13:08:32 
+13:08:32 ```ts
+13:08:32 let presentationMode = false
+13:08:32 
+13:08:32 export function isPresentationMode(): boolean {
+13:08:32   return presentationMode
+13:08:32 }
+13:08:32 
+13:08:32 export function togglePresentationMode(): boolean {
+13:08:32   presentationMode = !presentationMode
+13:08:32   const root = document.getElementById('root')
+13:08:32   if (root) {
+13:08:32     root.classList.toggle('presentation-mode', presentationMode)
+13:08:32   }
+13:08:32   return presentationMode
+13:08:32 }
+13:08:32 ```
+13:08:32 
+13:08:32 Export `togglePresentationMode` so `CesiumViewer.tsx` can call it from the keyboard handler.
+13:08:32 
+13:08:32 ### Step 4: Command Entry in core-commands.ts
+13:08:32 
+13:08:32 ```ts
+13:08:32 const presentationModeCmd: CommandEntry = {
+13:08:32   id: 'core:presentation-mode',
+13:08:32   name: 'Toggle presentation mode',
+13:08:32   module: 'core',
+13:08:32   category: 'view',
+13:08:32   description: 'Hide all UI chrome for a clean globe view (screenshot/presentation mode)',
+13:08:32   patterns: [
+13:08:32     'presentation mode', 'screenshot mode', 'hide ui', 'hide chrome',
+13:08:32     'clean view', 'toggle presentation', 'cinema mode',
+13:08:32   ],
+13:08:32   params: [],
+13:08:32   handler: () => {
+13:08:32     const active = togglePresentationMode()
+13:08:32     return active ? 'Presentation mode ON â€” press Escape or P to restore UI' : 'Presentation mode OFF'
+13:08:32   },
+13:08:32 }
+13:08:32 ```
+13:08:32 
+13:08:32 Add `presentationModeCmd` to the `coreCommands` array.
+13:08:32 
+13:08:32 ### Step 5: Keyboard Shortcuts in CesiumViewer.tsx
+13:08:32 
+13:08:32 In the `setupKeyboard()` function's `keydown` handler, add (after the existing shortcuts, inside the same `if (e.target instanceof HTMLInputElement ...)` guard):
+13:08:32 
+13:08:32 ```ts
+13:08:32 // P = toggle presentation mode (no modifiers, not in text input)
+13:08:32 if (key === 'p' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+13:08:32   togglePresentationMode()
+13:08:32 }
+13:08:32 
+13:08:32 // F11 = toggle presentation mode (prevent browser fullscreen)
+13:08:32 if (e.key === 'F11') {
+13:08:32   e.preventDefault()
+13:08:32   togglePresentationMode()
+13:08:32 }
+13:08:32 
+13:08:32 // Escape = exit presentation mode (only when active)
+13:08:32 if (e.key === 'Escape' && isPresentationMode()) {
+13:08:32   togglePresentationMode()
+13:08:32 }
+13:08:32 ```
+13:08:32 
+13:08:32 Import `togglePresentationMode` and `isPresentationMode` from `@/ai/core-commands`.
+13:08:32 
+13:08:32 **F11 note**: We `preventDefault()` to stop the browser's native fullscreen toggle. This is intentional â€” the existing `core:fullscreen` command handles browser fullscreen separately. Users wanting both can combine them.
+13:08:32 
+13:08:32 **Escape note**: Only exits presentation mode when active, so it doesn't interfere with other Escape handlers (e.g., closing panels).
+13:08:32 
+13:08:32 ## Edge Cases
+13:08:32 
+13:08:32 1. **Text input focus**: Already handled â€” `setupKeyboard` returns early when `e.target` is an input/textarea element, so typing "p" in chat won't trigger presentation mode.
+13:08:32 
+13:08:32 2. **F11 browser fullscreen conflict**: We preventDefault on F11 to claim it for presentation mode. The existing `core:fullscreen` command remains available for browser-level fullscreen. This is a deliberate design choice â€” presentation mode is more useful than a second fullscreen trigger.
+13:08:32 
+13:08:32 3. **Presentation mode + panel open**: If a panel (LayerPanel, HurricanePanel) is open when entering presentation mode, it gets hidden by `display: none`. When exiting, it reappears in its previous state. No state cleanup needed.
+13:08:32 
+13:08:32 4. **CesiumViewer cursor/interaction**: The Cesium canvas remains fully interactive (pan, zoom, rotate) during presentation mode. No changes needed.
+13:08:32 
+13:08:32 5. **Module-level state vs Zustand**: A simple module-level boolean is sufficient here. Presentation mode is purely a display concern â€” no React components need to reactively re-render based on it. The CSS class toggle on `#root` handles the visual change. This follows the same pattern as `isOrbiting()` in `scene/engine.ts`.
+13:08:32 
+13:08:32 6. **Page reload**: Presentation mode resets on reload (module-level state is ephemeral). This is the desired behavior â€” users shouldn't get stuck in a mode where UI is invisible.
+13:08:32 
+13:08:32 ## Testing
+13:08:32 
+13:08:32 1. **Command**: Type "presentation mode" in chat â€” UI overlays should disappear, globe should fill the screen. Run again â€” UI should reappear.
+13:08:32 2. **P key**: Press P (not in text input) â€” toggles presentation mode on/off.
+13:08:32 3. **F11 key**: Press F11 â€” toggles presentation mode (should NOT trigger browser fullscreen).
+13:08:32 4. **Escape key**: Enter presentation mode, press Escape â€” should exit. Press Escape when NOT in presentation mode â€” should do nothing special.
+13:08:32 5. **Text input**: Focus the chat input, type "p" â€” should NOT toggle presentation mode.
+13:08:32 6. **Globe interaction**: In presentation mode, verify pan/zoom/rotate still work.
+13:08:32 7. **Panel state preservation**: Open LayerPanel, enter presentation mode, exit â€” LayerPanel should still be open.
+13:08:32 
+13:08:32 ## Estimated Complexity
+13:08:32 Low
+13:08:32 -- END PLAN --
+13:08:32 
+13:08:32 +==========================================+
+13:08:32 |  PHASE 2: BUILD                          |
+13:08:32 +==========================================+
+13:08:32 Implementing plan...
+Done. Here's what was implemented:
+
+1. **`src/app/global.css`** ΓÇö Added `#root.presentation-mode [data-ui-chrome] { display: none !important }` rule
+2. **`src/app/App.tsx`** ΓÇö Wrapped all UI overlay components (everything except `<CesiumViewer />`) in a `<div data-ui-chrome>` container
+3. **`src/ai/core-commands.ts`** ΓÇö Added `togglePresentationMode()` / `isPresentationMode()` exports (module-level boolean state) and a `core:presentation-mode` command entry
+4. **`src/scene/CesiumViewer.tsx`** ΓÇö Added keyboard shortcuts in `setupKeyboard()`: **P** toggles presentation mode, **F11** toggles it (with `preventDefault` to block browser fullscreen), **Escape** exits when active
+
+TypeScript passes (only pre-existing unrelated errors).
+13:10:34 Build phase: 121.7s, exit code 0
+13:10:35 [presentation-mode fc7c73d] auto-task: Add a screenshot/presentation mode. Create a new command cor...
+13:10:35  4 files changed, 69 insertions(+), 10 deletions(-)
+13:10:35 Changes committed on branch presentation-mode
+13:10:35 Changes: 4 files, 79 lines
+13:10:35 
+13:10:35  src/ai/core-commands.ts    | 35 +++++++++++++++++++++++++++++++++++
+13:10:35  src/app/App.tsx            | 22 ++++++++++++----------
+13:10:35  src/app/global.css         |  5 +++++
+13:10:35  src/scene/CesiumViewer.tsx | 17 +++++++++++++++++
+13:10:35  4 files changed, 69 insertions(+), 10 deletions(-)
+13:10:35 
+13:10:35 +==========================================+
+13:10:35 |  PHASE 3: REVIEW                         |
+13:10:35 +==========================================+
+13:10:35 Reviewing work quality...
+## Review Complete
+
+**Verdict: PASS**
+
+The implementation is clean and well-structured across 4 files:
+
+- **`core-commands.ts`** ΓÇö Module-level boolean + toggle function + command entry (follows existing patterns like `isOrbiting`)
+- **`CesiumViewer.tsx`** ΓÇö P, F11, Escape handlers in `setupKeyboard()` (consistent with existing shortcuts)
+- **`global.css`** ΓÇö Single CSS rule using `#root.presentation-mode [data-ui-chrome]` selector
+- **`App.tsx`** ΓÇö All UI wrapped in one `<div data-ui-chrome>` element
+
+**TypeScript**: Compiles cleanly (2 pre-existing errors unrelated to this change).
+
+**3 minor notes** (none blocking):
+1. Future UI added outside the `data-ui-chrome` wrapper won't auto-hide
+2. F11 overrides browser fullscreen (intentional per spec)
+3. No visual indicator that presentation mode is active ΓÇö accidental P press could confuse users
+
+Report written to `scripts/reports/20260323-130552-review.md`.
+13:12:58 Review phase: 143.1s, exit code 0
+13:12:58 
+13:12:58 ===========================================
+13:12:58   SCORECARD
+13:12:58 ===========================================
+13:12:58 # Auto-Task Review: Presentation Mode
+13:12:58 Date: 2026-03-23T13:05:52
+13:12:58 Branch: presentation-mode (worktree)
+13:12:58 
+13:12:58 ## Task
+13:12:58 Add a screenshot/presentation mode command (`core:presentation-mode`) that hides all UI chrome, leaving only the bare globe visible. Escape or repeat command restores UI. Keyboard shortcuts: F11 or P (no modifiers, not in text input).
+13:12:58 
+13:12:58 ## Changes
+13:12:58 
+13:12:58 | File | Description |
+13:12:58 |------|-------------|
+13:12:58 | `src/ai/core-commands.ts` | Added `presentationMode` boolean state, `isPresentationMode()` getter, `togglePresentationMode()` function, and `presentationModeCmd` command entry |
+13:12:58 | `src/scene/CesiumViewer.tsx` | Added import of toggle/query functions; added P, F11, and Escape key handlers in `setupKeyboard()` |
+13:12:58 | `src/app/global.css` | Added `#root.presentation-mode [data-ui-chrome] { display: none !important; }` rule |
+13:12:58 | `src/app/App.tsx` | Wrapped all UI components in a single `<div data-ui-chrome>` element |
+13:12:58 
+13:12:58 ## Scorecard
+13:12:58 
+13:12:58 | Category | Score | Notes |
+13:12:58 |----------|-------|-------|
+13:12:58 | Completeness | **PASS** | All 5 success criteria met: command hides UI, globe-only view, Escape/repeat restores, keyboard shortcuts work, TypeScript compiles |
+13:12:58 | Code Quality | **PASS** | Clean implementation. Module-level boolean is consistent with existing patterns (e.g. `_lighting`, `_atmosphere` in CesiumViewer.tsx, `isOrbiting` in engine.ts). CSS approach via class toggle is minimal and non-invasive |
+13:12:58 | Type Safety | **PASS** | No new type errors. Pre-existing errors in `tron-mode/index.ts` and `satellite/orbit-worker.ts` are unrelated |
+13:12:58 | Performance | **PASS** | Zero render-loop cost. CSS class toggle is a one-shot DOM operation. No allocations in hot paths |
+13:12:58 | Patterns | **PASS** | Follows existing conventions: command registered in `coreCommands` array, keyboard shortcuts added in `setupKeyboard()`, module-level state with exported getter, CSS in `global.css` |
+13:12:58 
+13:12:58 ## Issues Found
+13:12:58 
+13:12:58 1. **Minor: No `data-ui-chrome` on individual components** â€” The implementation wraps all UI in a single `<div data-ui-chrome>` in `App.tsx`. This is actually cleaner than marking each component individually, but means any UI added outside this wrapper in the future won't be hidden. This is acceptable given the current architecture where `App.tsx` is the single shell.
+13:12:58 
+13:12:58 2. **Minor: F11 overrides browser fullscreen** â€” `e.preventDefault()` on F11 blocks the browser's native fullscreen toggle. This is intentional per the task spec but could surprise users expecting browser fullscreen. The command handler message mentions "press Escape or P to restore" which is clear.
+13:12:58 
+13:12:58 3. **Minor: No visual indicator of presentation mode** â€” There's no subtle hint (e.g., a brief toast or cursor change) that presentation mode is active. Users who accidentally press P might not realize why UI disappeared. Mitigated by Escape exiting the mode.
+13:12:58 
+13:12:58 ## Verdict
+13:12:58 **PASS**
+13:12:58 Clean, minimal implementation that follows all existing codebase patterns. The CSS class toggle approach is elegant â€” zero runtime cost, single point of control, and easy to extend. All success criteria are met.
+13:12:58 ===========================================
+13:12:58 Full report: C:\Users\halld\Dropbox\WORK_NVIDIA\NV_PROJECTS\worldscope\scripts\reports\20260323-130552-review.md
+13:12:58 
+13:12:58 ================================================================
+13:12:58   COMPLETE
+13:12:58   Verdict: PASS
+13:12:58   Time: plan=157.6s build=121.7s review=143.1s fix=0s total=422.4s
+13:12:59   Changes: 4 files, 79 lines
+13:12:59   Log: C:\Users\halld\Dropbox\WORK_NVIDIA\NV_PROJECTS\worldscope\scripts\reports\20260323-130552-log.txt
+13:12:59 ================================================================
+13:12:59 To review: cd C:\Users\halld\Dropbox\WORK_NVIDIA\NV_PROJECTS\worldscope\.claude\worktrees\presentation-mode
+13:12:59 To merge:  cd C:\Users\halld\Dropbox\WORK_NVIDIA\NV_PROJECTS\worldscope; git merge presentation-mode
+13:12:59 To discard: git worktree remove C:\Users\halld\Dropbox\WORK_NVIDIA\NV_PROJECTS\worldscope\.claude\worktrees\presentation-mode; git branch -D presentation-mode

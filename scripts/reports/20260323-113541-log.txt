@@ -1,0 +1,122 @@
+﻿11:35:43 Preparing worktree (new branch 'water-effects')
+11:35:44 HEAD is now at 1d5beca Expand Weather App spec in APP_IDEAS.md (Windy-style)
+11:35:44 
+11:35:44 ================================================================
+11:35:44   AUTO-TASK: Enable animated ocean water effects on the globe. In src/scene/CesiumViewer.tsx where the terrain provider is created, add requestWaterMask: true to the terrain provider options. Then set viewer.scene.globe.showWaterEffect = true. Also add a command core:toggle-water in src/ai/core-commands.ts that toggles globe.showWaterEffect on/off. Follow existing toggle command patterns.
+11:35:44   Mode: DOCKER (sandboxed, 4g RAM, 2 CPUs)
+11:35:44   Branch: water-effects
+11:35:44   Criteria: 1. Ocean has animated wave reflections 2. Toggle command works 3. TypeScript compiles 4. No visual regressions on land
+11:35:44   Log: C:\Users\halld\Dropbox\WORK_NVIDIA\NV_PROJECTS\worldscope\scripts\reports\20260323-113541-log.txt
+11:35:44 ================================================================
+11:35:44 
+11:35:44 +==========================================+
+11:35:44 |  PHASE 1: PLAN                           |
+11:35:44 +==========================================+
+11:35:44 Analyzing codebase and designing approach...
+Plan saved to `/workspace/PLAN.md`. 
+
+**Summary of the 3-file change:**
+
+1. **`src/scene/CesiumViewer.tsx`** ΓÇö Add `requestWaterMask: true` to terrain provider options, enable `showWaterEffect` + `oceanNormalMapUrl` in scene config, add `toggleSceneWater()` export following the existing lighting/atmosphere toggle pattern.
+
+2. **`src/ai/core-commands.ts`** ΓÇö Add `core:toggle-water` command following the `toggleLighting` pattern (7 patterns, no params, simple boolean flip on `globe.showWaterEffect`), add it to the `coreCommands` array.
+
+3. **`src/mcp/server.ts`** ΓÇö Add `core_toggle-water` to the MCP instructions docstring so AI agents discover the tool.
+
+Complexity is **low** ΓÇö all three changes follow existing patterns exactly, and the Cesium APIs involved are well-documented built-in features with no external dependencies.
+11:37:53 Plan phase: 128.2s, exit code 0
+11:37:53 
+11:37:53 -- PLAN --
+11:37:53 # Implementation Plan: Animated Ocean Water Effects
+11:37:53 
+11:37:53 ## Goal
+11:37:53 Enable CesiumJS animated ocean water rendering (specular reflections, wave animation) by requesting the water mask from the terrain provider and exposing a toggle command via the AI command system.
+11:37:53 
+11:37:53 ## Files to Change
+11:37:53 | File | Action | Description |
+11:37:53 |------|--------|-------------|
+11:37:53 | `src/scene/CesiumViewer.tsx` | MODIFY | Add `requestWaterMask: true` to terrain provider, set `globe.showWaterEffect = true` and `oceanNormalMapUrl`, add toggle state + exported toggle function following `toggleSceneLighting` pattern |
+11:37:53 | `src/ai/core-commands.ts` | MODIFY | Add `toggleWater` command entry following `toggleLighting` pattern, wire to scene toggle, add to `coreCommands` array |
+11:37:53 | `src/mcp/server.ts` | MODIFY | Add `core_toggle-water` to the MCP_INSTRUCTIONS docstring (View section) so AI agents know the tool exists |
+11:37:53 
+11:37:53 ## Approach
+11:37:53 
+11:37:53 ### Step 1: Terrain provider â€” request water mask
+11:37:53 In `CesiumViewer.tsx` line 74, change:
+11:37:53 ```ts
+11:37:53 viewer.scene.terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(1)
+11:37:53 ```
+11:37:53 to:
+11:37:53 ```ts
+11:37:53 viewer.scene.terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(1, {
+11:37:53   requestWaterMask: true,
+11:37:53 })
+11:37:53 ```
+11:37:53 
+11:37:53 ### Step 2: Enable water effect on the globe
+11:37:53 In the "Scene config" block (~line 100â€“107), after `depthTestAgainstTerrain`, add:
+11:37:53 ```ts
+11:37:53 scene.globe.showWaterEffect = true
+11:37:53 scene.globe.oceanNormalMapUrl = Cesium.buildModuleUrl('Assets/Textures/waterNormals.jpg')
+11:37:53 ```
+11:37:53 
+11:37:53 ### Step 3: Add toggle state + exported function in CesiumViewer.tsx
+11:37:53 Follow the existing `toggleSceneLighting` / `toggleSceneAtmosphere` pattern at the top of the file:
+11:37:53 - Add `let _water = true` to the module-level toggle state (next to `_lighting` and `_atmosphere`)
+11:37:53 - Expose it via `getSceneToggles()` (add `water: _water` to the return object)
+11:37:53 - Add `toggleSceneWater()` export that flips `viewer.scene.globe.showWaterEffect`, updates `_water`, and calls `notifyScene()`
+11:37:53 
+11:37:53 ### Step 4: Add `core:toggle-water` command in core-commands.ts
+11:37:53 Create a `toggleWater` command entry following the `toggleLighting` pattern:
+11:37:53 ```ts
+11:37:53 const toggleWater: CommandEntry = {
+11:37:53   id: 'core:toggle-water',
+11:37:53   name: 'Toggle water',
+11:37:53   module: 'core',
+11:37:53   category: 'view',
+11:37:53   description: 'Toggle animated ocean water effects on the globe',
+11:37:53   patterns: ['toggle water', 'water effect', 'ocean effect', 'show water', 'hide water', 'water on', 'water off'],
+11:37:53   params: [],
+11:37:53   handler: () => {
+11:37:53     const viewer = getViewer()
+11:37:53     if (!viewer) return
+11:37:53     viewer.scene.globe.showWaterEffect = !viewer.scene.globe.showWaterEffect
+11:37:53   },
+11:37:53 }
+11:37:53 ```
+11:37:53 Add `toggleWater` to the `coreCommands` array, next to the other toggle commands on the existing line (~1236).
+11:37:53 
+11:37:53 ### Step 5: Update MCP instructions docstring
+11:37:53 In `src/mcp/server.ts`, add to the **View** section of `MCP_INSTRUCTIONS`:
+11:37:53 ```
+11:37:53 - core_toggle-water â€” Toggle animated ocean water effects
+11:37:53 ```
+11:37:53 
+11:37:53 ## Edge Cases
+11:37:53 
+11:37:53 1. **Water mask not available in terrain asset**: Cesium World Terrain (asset 1) does include water masks, so `requestWaterMask: true` is valid. If the request fails, Cesium degrades gracefully â€” no water animation, no crash.
+11:37:53 
+11:37:53 2. **Performance**: The water effect is a GPU shader feature (specular highlights + normal-mapped waves). Per CESIUM_CAPABILITIES.md it's described as a "free visual upgrade" â€” minimal GPU cost. The water mask adds ~10-15% to terrain tile size but this is within acceptable bounds.
+11:37:53 
+11:37:53 3. **`oceanNormalMapUrl`**: Must point to a valid texture. `Cesium.buildModuleUrl('Assets/Textures/waterNormals.jpg')` is a built-in Cesium asset bundled with the library â€” no external dependency.
+11:37:53 
+11:37:53 4. **Globe hidden in photorealistic mode**: When `setBuildingMode('photorealistic')` is active, `globe.show = false`, so water effects are naturally invisible. No special handling needed â€” toggling water when globe is hidden is harmless and the effect appears when globe becomes visible again.
+11:37:53 
+11:37:53 5. **2D/Columbus View modes**: Water effects only render in 3D mode. Cesium handles this internally â€” no guard needed.
+11:37:53 
+11:37:53 ## Testing
+11:37:53 
+11:37:53 1. **Visual verification**: Run `pnpm dev`, navigate to an ocean area (e.g., Mediterranean, Pacific). Confirm animated wave reflections are visible with sun lighting enabled.
+11:37:53 2. **Toggle command**: Use the AI chat or MCP tool `core_toggle-water` to turn water off. Verify the ocean returns to a flat texture. Toggle on again to confirm re-enable.
+11:37:53 3. **MCP tool**: Verify `core_toggle-water` appears in the MCP tool list (check `worldscope://status` resource or `layers_list`).
+11:37:53 4. **Performance**: Check frame rate (F12 â†’ Performance tab) with water on vs off at various altitudes. Should be negligible difference.
+11:37:53 5. **Terrain still loads**: Verify terrain elevation still works correctly after adding `requestWaterMask` option (fly to mountainous area like Alps or Himalayas).
+11:37:53 
+11:37:53 ## Estimated Complexity
+11:37:53 Low
+11:37:53 -- END PLAN --
+11:37:53 
+11:37:53 +==========================================+
+11:37:53 |  PHASE 2: BUILD                          |
+11:37:53 +==========================================+
+11:37:53 Implementing plan...

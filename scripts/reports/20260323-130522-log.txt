@@ -1,0 +1,223 @@
+﻿13:05:23 Preparing worktree (new branch 'graticule-grid')
+13:05:23 HEAD is now at b20633d Tune Tron Mode: dark globe with green contour lines, not green wash
+13:05:23 
+13:05:23 ================================================================
+13:05:23   AUTO-TASK: Add a lat/lon graticule grid overlay. Create a new extension at src/extensions/graticule/index.ts with kind='capability'. On activate, create a Cesium GridImageryProvider or use Cesium.GridMaterialProperty to draw thin latitude/longitude lines every 10 degrees on the globe surface. Lines should be subtle (rgba(255,255,255,0.15) or similar) and not interfere with other layers. Register commands graticule:show and graticule:hide. The grid should be added as an imagery layer so it respects the layer ordering system. If GridImageryProvider is not available, create a custom UrlTemplateImageryProvider that generates grid tile images via canvas, or use the Cesium Grid material on the globe.
+13:05:23   Mode: DOCKER (sandboxed, 4g RAM, 2 CPUs)
+13:05:23   Branch: graticule-grid
+13:05:23   Criteria: 1. Grid lines visible on globe at 10-degree intervals 2. Lines are subtle and semi-transparent 3. Show/hide commands work 4. TypeScript compiles 5. Extension appears in catalog
+13:05:23   Log: C:\Users\halld\Dropbox\WORK_NVIDIA\NV_PROJECTS\worldscope\scripts\reports\20260323-130522-log.txt
+13:05:23 ================================================================
+13:05:23 
+13:05:23 +==========================================+
+13:05:23 |  PHASE 1: PLAN                           |
+13:05:23 +==========================================+
+13:05:23 Analyzing codebase and designing approach...
+Plan written to `PLAN.md`. Key decisions:
+
+- **GridImageryProvider is available** in CesiumJS 1.139 ΓÇö no need for a custom canvas-based provider.
+- **`cells: 18`** gives exactly 10┬░ spacing (180┬░ per level-0 tile ├╖ 18 = 10┬░).
+- **Single new file** at `src/extensions/graticule/index.ts` ΓÇö auto-discovered by the existing glob in `loader.ts`, no core files need editing.
+- **Imagery layer approach** means it automatically integrates with the layer ordering system, alpha/brightness controls, and the layer panel UI.
+- **~60 lines**, estimated **low complexity**.
+13:06:57 Plan phase: 94.1s, exit code 0
+13:06:57 
+13:06:57 -- PLAN --
+13:06:57 # Implementation Plan: Lat/Lon Graticule Grid Overlay
+13:06:57 
+13:06:57 ## Goal
+13:06:57 
+13:06:57 Add a subtle lat/lon graticule grid overlay as a `capability` extension at `src/extensions/graticule/index.ts`. Uses Cesium's built-in `GridImageryProvider` to draw grid lines every 10Â° on the globe surface as an imagery layer, with `graticule:show` and `graticule:hide` commands.
+13:06:57 
+13:06:57 ## Files to Change
+13:06:57 
+13:06:57 | File | Action | Description |
+13:06:57 |------|--------|-------------|
+13:06:57 | `src/extensions/graticule/index.ts` | NEW | Extension definition with activate/deactivate, GridImageryProvider setup, and show/hide commands |
+13:06:57 
+13:06:57 No other files need modification. The extension loader (`src/extensions/loader.ts`) already globs `../extensions/*/index.ts`, so the new file is auto-discovered.
+13:06:57 
+13:06:57 ## Approach
+13:06:57 
+13:06:57 ### Step 1: Extension scaffold
+13:06:57 
+13:06:57 Create `src/extensions/graticule/index.ts` exporting a default `Extension` object:
+13:06:57 - `id: 'graticule'`
+13:06:57 - `kind: 'capability'`
+13:06:57 - `autoActivate: false` (user activates via command)
+13:06:57 
+13:06:57 ### Step 2: activate() â€” create GridImageryProvider as a layer
+13:06:57 
+13:06:57 In `activate(api)`:
+13:06:57 
+13:06:57 1. Register a `LayerDef` with `kind: 'imagery'` and `id: 'graticule-grid'` via `api.layers.register()`.
+13:06:57 2. The `imageryProvider` factory creates a `Cesium.GridImageryProvider` configured for 10Â° spacing:
+13:06:57    - `cells: 18` â€” GridImageryProvider divides tiles into NxN cells. With the default `GeographicTilingScheme` (2 tiles at level 0, each 180Â°Ã—180Â°), 18 cells per tile = 180Â°/18 = 10Â° per grid line.
+13:06:57    - `color: Cesium.Color.WHITE.withAlpha(0.15)` â€” subtle white lines
+13:06:57    - `glowColor: Cesium.Color.TRANSPARENT` â€” no glow effect
+13:06:57    - `glowWidth: 0` â€” disable glow
+13:06:57    - `backgroundColor: Cesium.Color.TRANSPARENT` â€” no background fill
+13:06:57 3. Immediately show the layer via `api.layers.show('graticule-grid')`.
+13:06:57 
+13:06:57 Since the layer uses the standard imagery layer system, it automatically respects layer ordering, alpha controls, and the existing layer management UI.
+13:06:57 
+13:06:57 ### Step 3: Commands
+13:06:57 
+13:06:57 Return two `CommandEntry` objects from `activate()`:
+13:06:57 
+13:06:57 **`graticule:show`**
+13:06:57 - `patterns: ['show graticule', 'show grid', 'graticule on', 'grid lines']`
+13:06:57 - `handler`: calls `api.layers.show('graticule-grid')`, returns confirmation string
+13:06:57 - `category: 'view'`
+13:06:57 
+13:06:57 **`graticule:hide`**
+13:06:57 - `patterns: ['hide graticule', 'hide grid', 'graticule off', 'grid lines off']`
+13:06:57 - `handler`: calls `api.layers.hide('graticule-grid')`, returns confirmation string
+13:06:57 - `category: 'view'`
+13:06:57 
+13:06:57 ### Step 4: deactivate()
+13:06:57 
+13:06:57 Call `api.layers.remove('graticule-grid')` to clean up the imagery layer. Store the `api` reference in module-level closure for use in `deactivate()`.
+13:06:57 
+13:06:57 ### Key code snippet (activate core logic)
+13:06:57 
+13:06:57 ```typescript
+13:06:57 const LAYER_ID = 'graticule-grid'
+13:06:57 
+13:06:57 activate(api) {
+13:06:57   api.layers.register({
+13:06:57     id: LAYER_ID,
+13:06:57     name: 'Lat/Lon Graticule',
+13:06:57     kind: 'imagery',
+13:06:58     category: 'overlays',
+13:06:58     description: 'Latitude/longitude grid lines every 10Â°',
+13:06:58     defaultOn: false,
+13:06:58     imageryProvider: () => new Cesium.GridImageryProvider({
+13:06:58       cells: 18,
+13:06:58       color: Cesium.Color.WHITE.withAlpha(0.15),
+13:06:58       glowColor: Cesium.Color.TRANSPARENT,
+13:06:58       glowWidth: 0,
+13:06:58       backgroundColor: Cesium.Color.TRANSPARENT,
+13:06:58     }),
+13:06:58   })
+13:06:58   api.layers.show(LAYER_ID)
+13:06:58   // ... return { commands: [...] }
+13:06:58 }
+13:06:58 ```
+13:06:58 
+13:06:58 ## Edge Cases
+13:06:58 
+13:06:58 1. **No viewer available at activate time**: `api.layers.show()` will return false if no viewer â€” the layer def is still registered and can be shown later. No special handling needed.
+13:06:58 
+13:06:58 2. **Double activation**: `registerLayer` in the layer manager already no-ops on duplicate IDs. `registerExtension` in the extension registry also skips duplicates.
+13:06:58 
+13:06:58 3. **Interaction with other imagery layers**: GridImageryProvider renders transparent tiles with only the grid lines drawn. It composites cleanly over any base map or other imagery layers. The `alpha: 0.15` on the line color keeps it non-intrusive.
+13:06:58 
+13:06:58 4. **Performance**: `GridImageryProvider` is a lightweight built-in Cesium provider that renders grid lines on a canvas â€” no network requests, no tile fetches. Negligible performance impact. Well within the 16ms frame budget.
+13:06:58 
+13:06:58 5. **GridImageryProvider `cells` vs degrees**: The `GeographicTilingScheme` at level 0 has 2Ã—1 tiles (each 180Â°Ã—180Â°). Setting `cells: 18` gives 180/18 = 10Â° spacing. As the user zooms in and higher-level tiles load, the grid subdivides consistently because the tiling scheme is hierarchical. The grid will always show lines at 10Â° intervals at the appropriate zoom level.
+13:06:58 
+13:06:58 ## Testing
+13:06:58 
+13:06:58 1. **Activate via command**: Use AI chat or programmatic `activateExtension('graticule')` â€” verify grid lines appear on globe at 10Â° intervals.
+13:06:58 2. **Visual check**: Lines should be barely visible (white at 15% opacity) â€” zoom to various altitudes to confirm they don't dominate the scene.
+13:06:58 3. **Layer panel**: Verify "Lat/Lon Graticule" appears in the layers list under "overlays" category.
+13:06:58 4. **Show/hide commands**: Run `graticule:show` and `graticule:hide` â€” layer toggles correctly.
+13:06:58 5. **Layer ordering**: Add other imagery layers (e.g., GIBS clouds) â€” verify graticule can be reordered relative to them.
+13:06:58 6. **Deactivate**: Deactivate the extension â€” verify the imagery layer is fully removed from the globe.
+13:06:58 7. **No interference**: Confirm other layers (GeoJSON, base map, 3D tiles) render normally with graticule active.
+13:06:58 
+13:06:58 ## Estimated Complexity
+13:06:58 
+13:06:58 **Low** â€” Single new file, ~60 lines, uses a built-in Cesium provider, follows the established extension pattern exactly.
+13:06:58 -- END PLAN --
+13:06:58 
+13:06:58 +==========================================+
+13:06:58 |  PHASE 2: BUILD                          |
+13:06:58 +==========================================+
+13:06:58 Implementing plan...
+Done. The graticule extension is implemented at `src/extensions/graticule/index.ts`:
+
+- **Kind**: `capability`, `autoActivate: false`
+- **On activate**: Registers an imagery layer using `Cesium.GridImageryProvider` with `cells: 18` (10┬░ spacing), subtle white lines at 15% opacity, no glow, transparent background. Immediately shows the layer.
+- **Commands**: `graticule:show` and `graticule:hide` toggle the layer via the standard layer API
+- **On deactivate**: Removes the layer cleanly
+- **Auto-discovered** by the extension loader's glob pattern `../extensions/*/index.ts`
+- Typecheck passes (2 pre-existing errors in other files, none in the new code)
+13:08:10 Build phase: 72.2s, exit code 0
+13:08:10 [graticule-grid 1886a19] auto-task: Add a lat/lon graticule grid overlay. Create a new extension...
+13:08:10  1 file changed, 78 insertions(+)
+13:08:10  create mode 100644 src/extensions/graticule/index.ts
+13:08:10 Changes committed on branch graticule-grid
+13:08:10 Changes: 1 files, 78 lines
+13:08:10 
+13:08:10  src/extensions/graticule/index.ts | 78 +++++++++++++++++++++++++++++++++++++++
+13:08:10  1 file changed, 78 insertions(+)
+13:08:10 
+13:08:10 +==========================================+
+13:08:10 |  PHASE 3: REVIEW                         |
+13:08:10 +==========================================+
+13:08:10 Reviewing work quality...
+**Review complete.** Report written to `scripts/reports/20260323-130522-review.md`.
+
+**Verdict: PASS**
+
+The graticule extension is clean and well-implemented:
+- Uses Cesium's built-in `GridImageryProvider` with `cells: 18` (180┬░/18 = 10┬░ intervals) 
+- Subtle white lines at alpha 0.15 with transparent glow/background
+- Proper show/hide commands and deactivate cleanup
+- No new TypeScript errors
+- Follows existing extension patterns exactly (matches tron-mode structure)
+
+One minor cosmetic note: `defaultOn: false` on the layer def is slightly misleading since `activate()` immediately calls `api.layers.show()`, but this has no functional impact.
+13:10:07 Review phase: 116.8s, exit code 0
+13:10:07 
+13:10:07 ===========================================
+13:10:07   SCORECARD
+13:10:07 ===========================================
+13:10:07 # Auto-Task Review: Lat/Lon Graticule Grid Overlay
+13:10:07 Date: 2026-03-23T13:05:22
+13:10:07 Branch: graticule-grid
+13:10:07 
+13:10:07 ## Task
+13:10:07 Add a lat/lon graticule grid overlay as a new extension at `src/extensions/graticule/index.ts` with `kind='capability'`. Draw latitude/longitude lines every 10 degrees using Cesium's GridImageryProvider. Lines should be subtle (rgba white 0.15 alpha), not interfere with other layers, and be added as an imagery layer. Register `graticule:show` and `graticule:hide` commands.
+13:10:07 
+13:10:07 ## Changes
+13:10:07 | File | Description |
+13:10:07 |------|-------------|
+13:10:07 | `src/extensions/graticule/index.ts` | New extension â€” graticule grid overlay using `Cesium.GridImageryProvider` |
+13:10:07 
+13:10:07 ## Scorecard
+13:10:07 
+13:10:07 | Category | Score | Notes |
+13:10:07 |----------|-------|-------|
+13:10:07 | Completeness | PASS | All 5 success criteria met: 10Â° grid lines, subtle alpha=0.15, show/hide commands, TypeScript compiles, extension discoverable via `import.meta.glob('../extensions/*/index.ts')` |
+13:10:07 | Code Quality | PASS | Clean, concise (~78 lines). Follows existing extension patterns (matches tron-mode structure). Proper cleanup in `deactivate()`. No magic numbers â€” `cells: 18` is correct for 10Â° intervals (180Â°/18 = 10Â°). |
+13:10:07 | Type Safety | PASS | No new TypeScript errors introduced. Pre-existing errors in `tron-mode/index.ts` and `orbit-worker.ts` are unrelated. |
+13:10:07 | Performance | PASS | `GridImageryProvider` is Cesium's built-in tile-based grid renderer â€” no custom canvas drawing, no per-frame allocations. Tiles are cached by Cesium's imagery layer system. |
+13:10:07 | Patterns | PASS | Follows extension conventions: default export, `kind: 'capability'`, layer registered via `api.layers.register()` with `kind: 'imagery'`, commands returned from `activate()`, cleanup in `deactivate()`. Matches the established pattern from tron-mode and other extensions. |
+13:10:07 
+13:10:07 ## Issues Found
+13:10:07 
+13:10:07 1. **Minor: `autoActivate: false` but `activate()` calls `api.layers.show()`** â€” The extension shows the grid immediately on activation. This is correct behavior (user must explicitly activate the extension, at which point the grid should appear), but `defaultOn: false` on the layer registration is slightly misleading since `show()` is called right after. Consider setting `defaultOn: true` or removing the explicit `show()` call and letting the registry handle it. _Cosmetic only â€” no functional impact._
+13:10:07 
+13:10:07 2. **Minor: Not in defaults list** â€” The extension is not listed in `worldscope.extensions.json` defaults, which is correct for a non-auto-activate capability. Users must enable it manually or via commands. This is intentional and appropriate.
+13:10:07 
+13:10:07 3. **Minor: Module-scoped `_api` variable** â€” The `_api` reference is stored at module scope for use in `deactivate()`. This is the same pattern used by tron-mode, so it's consistent, though it means only one activation instance is supported (which is fine for this use case).
+13:10:07 
+13:10:07 ## Verdict
+13:10:07 **PASS**
+13:10:07 Clean, minimal implementation that correctly uses Cesium's built-in `GridImageryProvider` for 10Â° graticule lines. Follows all project conventions and extension patterns. No bugs, no type errors, no performance concerns.
+13:10:07 ===========================================
+13:10:07 Full report: C:\Users\halld\Dropbox\WORK_NVIDIA\NV_PROJECTS\worldscope\scripts\reports\20260323-130522-review.md
+13:10:07 
+13:10:07 ================================================================
+13:10:07   COMPLETE
+13:10:07   Verdict: PASS
+13:10:07   Time: plan=94.1s build=72.2s review=116.8s fix=0s total=283.1s
+13:10:07   Changes: 1 files, 78 lines
+13:10:07   Log: C:\Users\halld\Dropbox\WORK_NVIDIA\NV_PROJECTS\worldscope\scripts\reports\20260323-130522-log.txt
+13:10:07 ================================================================
+13:10:07 To review: cd C:\Users\halld\Dropbox\WORK_NVIDIA\NV_PROJECTS\worldscope\.claude\worktrees\graticule-grid
+13:10:07 To merge:  cd C:\Users\halld\Dropbox\WORK_NVIDIA\NV_PROJECTS\worldscope; git merge graticule-grid
+13:10:07 To discard: git worktree remove C:\Users\halld\Dropbox\WORK_NVIDIA\NV_PROJECTS\worldscope\.claude\worktrees\graticule-grid; git branch -D graticule-grid
