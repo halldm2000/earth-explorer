@@ -195,9 +195,9 @@ INSTRUCTIONS:
 - Read relevant source files before making changes
 - Follow existing code patterns and conventions
 - Run typecheck after changes: node node_modules/typescript/bin/tsc --noEmit
-- Commit your changes with a descriptive message when done
-- If you encounter errors, debug and fix them - don't stop
+- Do NOT run git commit — the host script handles committing after you finish
 - Delete PLAN.md when done (it was a working document)
+- If you encounter errors, debug and fix them - don't stop
 - Be thorough but focused on the specific task
 '@ -replace '\{TASK\}', $Task
 
@@ -518,6 +518,21 @@ $buildSec = Measure-Phase {
 $buildExit = $script:lastExit
 
 Log "Build phase: ${buildSec}s, exit code $buildExit" $(if ($buildExit -eq 0) { "Green" } else { "Red" })
+
+# Host-side commit (Docker can't commit because worktree .git points to host paths)
+if (-not $NoWorktree) {
+    Push-Location $worktreePath
+    $hasChanges = git status --porcelain
+    if ($hasChanges) {
+        # Clean up PLAN.md if still present
+        if (Test-Path "PLAN.md") { Remove-Item "PLAN.md" -Force }
+        git add -A
+        $taskShort = if ($Task.Length -gt 60) { $Task.Substring(0, 60) + "..." } else { $Task }
+        git commit -m "auto-task: $taskShort`n`nCo-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>" 2>&1 | ForEach-Object { Log $_ "Gray" }
+        Log "Changes committed on branch $Branch" "Green"
+    }
+    Pop-Location
+}
 
 # Diff size guard
 if (-not $NoWorktree) {
