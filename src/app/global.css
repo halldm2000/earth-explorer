@@ -31,6 +31,11 @@ body {
 .cesium-viewer-bottom { display: none !important; }
 .cesium-credit-logoContainer { display: none !important; }
 
+/* Presentation mode: hide all UI chrome, show only the globe */
+#root.presentation-mode [data-ui-chrome] {
+  display: none !important;
+}
+
 /* Chat panel animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }

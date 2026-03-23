@@ -47,16 +47,18 @@ export function App() {
   return (
     <>
       <CesiumViewer />
-      <TimeSlider />
-      <BottomBar />
-      <LayerPanel />
-      <LegendPanel />
-      <SatelliteInfo />
-      <EarthquakeInfo />
-      <ShipInfo />
-      <HurricanePanel open={hurricanePanelOpen} onClose={() => setHurricanePanelOpen(false)} />
-      <ChatPanel />
-      <ExtensionCatalog />
+      <div data-ui-chrome>
+        <TimeSlider />
+        <BottomBar />
+        <LayerPanel />
+        <LegendPanel />
+        <SatelliteInfo />
+        <EarthquakeInfo />
+        <ShipInfo />
+        <HurricanePanel open={hurricanePanelOpen} onClose={() => setHurricanePanelOpen(false)} />
+        <ChatPanel />
+        <ExtensionCatalog />
+      </div>
     </>
   )
 }
