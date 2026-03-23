@@ -77,9 +77,9 @@ $logFile = "$reportDir\$timestamp-log.txt"
 $branchSafe = $Branch -replace '/','-'
 
 # Phase turn limits (prevent infinite loops)
-$planMaxTurns = 20
-$reviewMaxTurns = 15
-$fixMaxTurns = 25
+$planMaxTurns = 30
+$reviewMaxTurns = 30
+$fixMaxTurns = 40
 
 # Diff guard thresholds
 $maxFilesChanged = 20
