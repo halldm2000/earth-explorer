@@ -128,14 +128,15 @@ const extension: Extension = {
     bloom.uniforms.sigma = 4.0
     bloom.uniforms.stepSize = 0.5
 
-    // 5. Green atmosphere glow
-    scene.atmosphere.hueShift = 0.33      // toward green
-    scene.atmosphere.saturationShift = 0.5 // boost saturation
-    scene.atmosphere.brightnessShift = 0.1 // slightly brighter glow
+    // 5. Green atmosphere — shift from default blue (hue ~0.6) to green (hue ~0.33)
+    // Cesium hueShift is relative: -0.27 shifts blue toward green
+    scene.atmosphere.hueShift = -0.27
+    scene.atmosphere.saturationShift = 0.4
+    scene.atmosphere.brightnessShift = -0.1
     if (scene.skyAtmosphere) {
-      scene.skyAtmosphere.hueShift = 0.33
-      scene.skyAtmosphere.saturationShift = 0.5
-      scene.skyAtmosphere.brightnessShift = -0.2
+      scene.skyAtmosphere.hueShift = -0.27
+      scene.skyAtmosphere.saturationShift = 0.4
+      scene.skyAtmosphere.brightnessShift = -0.3
     }
 
     // 6. Custom glow ring via post-process shader
