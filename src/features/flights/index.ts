@@ -497,7 +497,40 @@ function makeCommands(ctx: AppContext): CommandEntry[] {
     },
   }
 
-  return [showCmd, hideCmd, queryCmd, summaryCmd]
+  const clusterCmd: CommandEntry = {
+    id: 'flights:cluster',
+    name: 'Toggle flight clustering',
+    module: 'flights',
+    category: 'feature',
+    description: 'Toggle entity clustering on the flight tracker. Groups nearby aircraft into labeled clusters.',
+    patterns: [
+      'cluster flights', 'uncluster flights',
+      'toggle flight clustering', 'group flights',
+      'flights clustering on', 'flights clustering off',
+    ],
+    params: [
+      { name: 'enabled', type: 'enum', required: false, options: ['on', 'off', 'toggle'], description: 'Enable, disable, or toggle clustering' },
+    ],
+    handler: (params) => {
+      if (!_dataSource) return 'Flight tracker is not active. Show flights first.'
+      const raw = String(params._raw ?? '').toLowerCase()
+      const action = String(params.enabled ?? '').toLowerCase()
+
+      let enabled: boolean
+      if (action === 'on' || raw.includes('cluster flights') || raw.includes('clustering on') || raw.includes('group')) {
+        enabled = true
+      } else if (action === 'off' || raw.includes('uncluster') || raw.includes('clustering off')) {
+        enabled = false
+      } else {
+        enabled = !_dataSource.clustering.enabled
+      }
+
+      _dataSource.clustering.enabled = enabled
+      return `Flight clustering ${enabled ? 'enabled' : 'disabled'} (${_aircraft.length} aircraft)`
+    },
+  }
+
+  return [showCmd, hideCmd, queryCmd, summaryCmd, clusterCmd]
 }
 
 // ── App definition ──

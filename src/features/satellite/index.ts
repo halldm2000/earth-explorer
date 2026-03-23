@@ -1025,7 +1025,40 @@ function makeCommands(ctx: AppContext): CommandEntry[] {
     },
   }
 
-  return [showCmd, hideCmd, trackCmd, queryCmd, isolateCmd, followCmd]
+  const clusterCmd: CommandEntry = {
+    id: 'satellite:cluster',
+    name: 'Toggle satellite clustering',
+    module: 'satellite',
+    category: 'feature',
+    description: 'Toggle entity clustering on the satellite tracker. Groups nearby satellites into labeled clusters.',
+    patterns: [
+      'cluster satellites', 'cluster sats', 'spread satellites', 'spread sats',
+      'toggle satellite clustering', 'group satellites',
+      'satellite clustering on', 'satellite clustering off',
+    ],
+    params: [
+      { name: 'enabled', type: 'enum', required: false, options: ['on', 'off', 'toggle'], description: 'Enable, disable, or toggle clustering' },
+    ],
+    handler: (params) => {
+      if (!_dataSource) return 'Satellite tracker is not active. Show satellites first.'
+      const raw = String(params._raw ?? '').toLowerCase()
+      const action = String(params.enabled ?? '').toLowerCase()
+
+      let enabled: boolean
+      if (action === 'on' || raw.includes('cluster') && !raw.includes('spread')) {
+        enabled = true
+      } else if (action === 'off' || raw.includes('spread')) {
+        enabled = false
+      } else {
+        enabled = !_dataSource.clustering.enabled
+      }
+
+      _dataSource.clustering.enabled = enabled
+      return `Satellite clustering ${enabled ? 'enabled' : 'disabled'} (${_satellites.length} satellites)`
+    },
+  }
+
+  return [showCmd, hideCmd, trackCmd, queryCmd, isolateCmd, followCmd, clusterCmd]
 }
 
 // ── App definition ──
