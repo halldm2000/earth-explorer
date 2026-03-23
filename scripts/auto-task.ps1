@@ -320,9 +320,9 @@ if ($Criteria) { Write-Host "[auto-task] Criteria: $Criteria" -ForegroundColor G
 
 # ── Phase 1: PLAN ──
 
-Write-Host "`n╔══════════════════════════════════════════╗" -ForegroundColor Yellow
-Write-Host "║  PHASE 1: PLAN                           ║" -ForegroundColor Yellow
-Write-Host "╚══════════════════════════════════════════╝" -ForegroundColor Yellow
+Write-Host "`n+==========================================+" -ForegroundColor Yellow
+Write-Host "|  PHASE 1: PLAN                           |" -ForegroundColor Yellow
+Write-Host "+==========================================+" -ForegroundColor Yellow
 Write-Host "[auto-task] Analyzing codebase and designing approach...`n" -ForegroundColor White
 
 if ($useDocker) {
@@ -337,16 +337,16 @@ Write-Host "`n[auto-task] Plan phase exited with code $planExit" -ForegroundColo
 # Show plan if it exists
 $planFile = Join-Path $workDir "PLAN.md"
 if (Test-Path $planFile) {
-    Write-Host "`n── PLAN ──" -ForegroundColor Yellow
+    Write-Host "`n-- PLAN --" -ForegroundColor Yellow
     Get-Content $planFile | Write-Host
-    Write-Host "── END PLAN ──`n" -ForegroundColor Yellow
+    Write-Host "-- END PLAN --`n" -ForegroundColor Yellow
 }
 
 # ── Phase 2: BUILD ──
 
-Write-Host "`n╔══════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║  PHASE 2: BUILD                          ║" -ForegroundColor Cyan
-Write-Host "╚══════════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host "`n+==========================================+" -ForegroundColor Cyan
+Write-Host "|  PHASE 2: BUILD                          |" -ForegroundColor Cyan
+Write-Host "+==========================================+" -ForegroundColor Cyan
 Write-Host "[auto-task] Implementing plan...`n" -ForegroundColor White
 
 if ($useDocker) {
@@ -378,9 +378,9 @@ if (-not $NoWorktree) {
 # ── Phase 2: REVIEW ──
 
 if (-not $SkipReview) {
-    Write-Host "`n╔══════════════════════════════════════════╗" -ForegroundColor Magenta
-    Write-Host "║  PHASE 3: REVIEW                         ║" -ForegroundColor Magenta
-    Write-Host "╚══════════════════════════════════════════╝" -ForegroundColor Magenta
+    Write-Host "`n+==========================================+" -ForegroundColor Magenta
+    Write-Host "|  PHASE 3: REVIEW                         |" -ForegroundColor Magenta
+    Write-Host "+==========================================+" -ForegroundColor Magenta
     Write-Host "[auto-task] Reviewing work quality...`n" -ForegroundColor White
 
     if ($useDocker) {
@@ -394,11 +394,11 @@ if (-not $SkipReview) {
 
     # Display the scorecard
     if (Test-Path $reportFile) {
-        Write-Host "`n═══════════════════════════════════════════" -ForegroundColor Magenta
+        Write-Host "`n===========================================" -ForegroundColor Magenta
         Write-Host "  SCORECARD" -ForegroundColor Magenta
-        Write-Host "═══════════════════════════════════════════" -ForegroundColor Magenta
+        Write-Host "===========================================" -ForegroundColor Magenta
         Get-Content $reportFile | Write-Host
-        Write-Host "═══════════════════════════════════════════`n" -ForegroundColor Magenta
+        Write-Host "===========================================`n" -ForegroundColor Magenta
         Write-Host "[auto-task] Full report: $reportFile" -ForegroundColor Gray
     } else {
         Write-Host "[auto-task] Warning: review report not found at $reportFile" -ForegroundColor Yellow
@@ -407,10 +407,10 @@ if (-not $SkipReview) {
 
 # ── Summary ──
 
-Write-Host "`n[auto-task] ─── COMPLETE ───" -ForegroundColor Green
+Write-Host "`n[auto-task] === COMPLETE ===" -ForegroundColor Green
 
 if (-not $NoWorktree) {
-    Write-Host "[auto-task] To review code: cd $worktreePath" -ForegroundColor Cyan
-    Write-Host "[auto-task] To merge:       cd $projectRoot && git merge $Branch" -ForegroundColor Cyan
-    Write-Host "[auto-task] To discard:     git worktree remove $worktreePath && git branch -D $Branch" -ForegroundColor Gray
+    Write-Host ('[auto-task] To review code: cd ' + $worktreePath) -ForegroundColor Cyan
+    Write-Host ('[auto-task] To merge:       cd ' + $projectRoot + '; git merge ' + $Branch) -ForegroundColor Cyan
+    Write-Host ('[auto-task] To discard:     git worktree remove ' + $worktreePath + '; git branch -D ' + $Branch) -ForegroundColor Gray
 }
