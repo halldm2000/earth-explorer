@@ -101,6 +101,7 @@ export interface LiveLayer {
   visible: boolean
   properties: LayerProperties
   geoJsonProperties?: GeoJsonProperties
+  clusteringEnabled?: boolean
   // The actual Cesium object — varies by kind
   datasource?: Cesium.GeoJsonDataSource
   imageryLayer?: Cesium.ImageryLayer
