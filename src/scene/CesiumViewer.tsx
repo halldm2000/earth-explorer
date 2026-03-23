@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as Cesium from 'cesium'
 import { useStore } from '@/store'
-import { getViewer, setViewer, setBuildingTilesets, updateBuildingMode, applyQualityPreset } from './engine'
+import { getViewer, setViewer, setBuildingTilesets, setBuildingMode, updateBuildingMode, applyQualityPreset } from './engine'
 import { playRumble } from '@/audio/sounds'
 
 const MAX_ALTITUDE = 40_000_000 // 40,000 km — enough to see full globe in any aspect ratio
@@ -234,19 +234,18 @@ function setupKeyboard(viewer: Cesium.Viewer) {
       })
     }
 
-    // 2 = switch to 2D map view
+    // View mode shortcuts: 1=2.5D, 2=2D, 3=3D
+    // Hide 3D Tiles (buildings) in non-3D modes to avoid projection errors
     if (key === '2' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      setBuildingMode('osm') // hide photorealistic, show OSM (which handles 2D better)
       viewer.scene.morphTo2D(1.0)
     }
-
-    // 3 = switch to 3D globe view
+    if (key === '1' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      setBuildingMode('osm')
+      viewer.scene.morphToColumbusView(1.0)
+    }
     if (key === '3' && !e.metaKey && !e.ctrlKey && !e.altKey) {
       viewer.scene.morphTo3D(1.0)
-    }
-
-    // 1 = 2.5D Columbus View
-    if (key === '1' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      viewer.scene.morphToColumbusView(1.0)
     }
   })
 
