@@ -30,13 +30,13 @@ if ($IsWindows -or $env:OS -eq 'Windows_NT') {
 
 # Start dev server as a separate process
 Write-Host "  Starting dev server..." -ForegroundColor Green
-$devProc = Start-Process -FilePath "npm" -ArgumentList "run","dev" -WorkingDirectory $projectRoot -PassThru -NoNewWindow -RedirectStandardOutput "$projectRoot/.dev-out.tmp" -RedirectStandardError "$projectRoot/.dev-err.tmp"
+$devProc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c","npm run dev" -WorkingDirectory $projectRoot -PassThru -NoNewWindow -RedirectStandardOutput "$projectRoot/.dev-out.tmp" -RedirectStandardError "$projectRoot/.dev-err.tmp"
 
 Start-Sleep -Seconds 3
 
 # Start MCP server as a separate process
 Write-Host "  Starting MCP server..." -ForegroundColor Green
-$mcpProc = Start-Process -FilePath "npm" -ArgumentList "run","mcp" -WorkingDirectory $projectRoot -PassThru -NoNewWindow -RedirectStandardOutput "$projectRoot/.mcp-out.tmp" -RedirectStandardError "$projectRoot/.mcp-err.tmp"
+$mcpProc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c","npm run mcp" -WorkingDirectory $projectRoot -PassThru -NoNewWindow -RedirectStandardOutput "$projectRoot/.mcp-out.tmp" -RedirectStandardError "$projectRoot/.mcp-err.tmp"
 
 Start-Sleep -Seconds 2
 
