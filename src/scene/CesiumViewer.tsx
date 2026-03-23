@@ -243,6 +243,11 @@ function setupKeyboard(viewer: Cesium.Viewer) {
     if (key === '3' && !e.metaKey && !e.ctrlKey && !e.altKey) {
       viewer.scene.morphTo3D(1.0)
     }
+
+    // 1 = 2.5D Columbus View
+    if (key === '1' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      viewer.scene.morphToColumbusView(1.0)
+    }
   })
 
   document.addEventListener('keyup', (e) => {
