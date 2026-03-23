@@ -1,0 +1,26 @@
+# Sandboxed Claude Code autonomous task runner
+#
+# Build:  docker build -f scripts/Dockerfile.auto-task -t worldscope-task .
+# Run:    See scripts/auto-task.ps1 (handles this automatically)
+
+FROM node:22-slim
+
+# Install git and common tools Claude might need
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code CLI
+RUN npm install -g @anthropic-ai/claude-code
+
+# Create workspace
+WORKDIR /workspace
+
+# The project is mounted at /workspace at runtime
+# node_modules is mounted read-only to avoid reinstall
+# Claude's API key is passed as env var
+
+# Default: run Claude with full autonomy inside the sandbox
+ENTRYPOINT ["claude", "-p", "--dangerously-skip-permissions"]
