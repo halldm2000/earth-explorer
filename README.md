@@ -128,6 +128,42 @@ Tools are dynamically synced from the browser's command registry. When features 
 | **layers:list** | List all available layers |
 | **layers:hide-all** | Hide all active layers |
 
+## Autonomous Task Runner
+
+Launch Claude Code tasks that run to completion without permission prompts, safely sandboxed in a Docker container:
+
+```powershell
+# Default: Docker sandbox + git worktree isolation
+.\scripts\auto-task.ps1 -Task "Add entity clustering to fix ship tracker lockup"
+
+# Named branch for review
+.\scripts\auto-task.ps1 -Task "Build Tron Mode theme extension" -Branch "tron-mode"
+
+# After completion, review and merge:
+#   cd .claude\worktrees\auto-20260323-143000
+#   git diff HEAD~1
+#   cd <project-root> && git merge auto/20260323-143000
+```
+
+**How it works:**
+1. Creates an isolated git worktree (separate branch)
+2. Runs Claude Code inside a Docker container with `--dangerously-skip-permissions`
+3. Claude can edit files and run commands inside the container but cannot touch your host system
+4. When done, shows what changed and how to merge
+
+**Requirements:** Docker Desktop. Without Docker, the script aborts with instructions. Use `-NoDocker` to bypass (unsafe — worktree isolation only) or `-NoWorktree` for no isolation at all.
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `-Task "..."` | What Claude should do (required) |
+| `-Branch "name"` | Custom branch name (default: auto-timestamped) |
+| `-NoDocker` | Skip Docker, use worktree only (unsafe) |
+| `-NoWorktree` | Run directly in working tree (most unsafe) |
+| `-Model "..."` | Override the model |
+| `-MaxTurns N` | Limit agentic turns |
+
 ## Keyboard Controls
 
 | Key | Action |
