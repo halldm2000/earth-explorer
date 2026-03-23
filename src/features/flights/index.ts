@@ -188,10 +188,11 @@ function getOrCreateDataSource(viewer: Cesium.Viewer): Cesium.CustomDataSource {
   if (_dataSource) return _dataSource
   _dataSource = new Cesium.CustomDataSource('flight-tracker')
 
-  // Entity clustering — small pixel range so only truly overlapping planes merge
-  _dataSource.clustering.enabled = true
-  _dataSource.clustering.pixelRange = 15
-  _dataSource.clustering.minimumClusterSize = 5
+  // Entity clustering — configured but off by default (toggle via "cluster flights")
+  // Flights use efficient incremental entity updates so clustering isn't needed for perf
+  _dataSource.clustering.enabled = false
+  _dataSource.clustering.pixelRange = 25
+  _dataSource.clustering.minimumClusterSize = 8
   _dataSource.clustering.clusterBillboards = true
   _dataSource.clustering.clusterLabels = true
   _dataSource.clustering.clusterPoints = true
