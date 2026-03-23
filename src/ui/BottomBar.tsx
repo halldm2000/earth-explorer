@@ -33,13 +33,15 @@ export function BottomBar() {
       if (!viewer) return
 
       const carto = viewer.camera.positionCartographic
-      if (!carto) return
+      // Guard against undefined values during scene morph transitions
+      if (!carto || carto.latitude == null || carto.longitude == null) return
 
+      const heading = viewer.camera.heading
       setCamera({
         lat: Cesium.Math.toDegrees(carto.latitude),
         lon: Cesium.Math.toDegrees(carto.longitude),
-        alt: carto.height,
-        heading: Cesium.Math.toDegrees(viewer.camera.heading),
+        alt: carto.height ?? 0,
+        heading: heading != null ? Cesium.Math.toDegrees(heading) : 0,
       })
     }
 

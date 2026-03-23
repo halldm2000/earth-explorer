@@ -128,7 +128,7 @@ export function CesiumViewer() {
       // Camera status sync + altitude clamp
       scene.postRender.addEventListener(() => {
         const c = viewer.camera.positionCartographic
-        if (c) {
+        if (c && c.latitude != null && c.longitude != null) {
           // Enforce max altitude
           if (c.height > MAX_ALTITUDE) {
             viewer.camera.setView({
@@ -263,7 +263,9 @@ function setupKeyboard(viewer: Cesium.Viewer) {
     if (keysDown.size === 0) return
 
     const camera = viewer.camera
-    const height = camera.positionCartographic.height
+    const carto = camera.positionCartographic
+    if (!carto || carto.height == null) return
+    const height = carto.height
     const isShift = keysDown.has('shift')
 
     // Scale movement to altitude: fast at high altitude, precise at ground level
@@ -309,7 +311,9 @@ function setupGamepad(viewer: Cesium.Viewer) {
       if (!gp) continue
 
       const camera = viewer.camera
-      const height = camera.positionCartographic.height
+      const gpCarto = camera.positionCartographic
+      if (!gpCarto || gpCarto.height == null) continue
+      const height = gpCarto.height
       const moveRate = height / 30
       const lookRate = 0.03
 
