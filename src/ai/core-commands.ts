@@ -403,6 +403,71 @@ const toggleShadows: CommandEntry = {
   },
 }
 
+const setFog: CommandEntry = {
+  id: 'core:set-fog',
+  name: 'Set fog',
+  module: 'core',
+  category: 'view',
+  description: 'Control fog density and visibility on the globe',
+  patterns: ['set fog {density}', 'fog density {density}', 'fog on', 'fog off', 'toggle fog', 'set fog'],
+  params: [
+    { name: 'density', type: 'number', required: false, description: 'Fog density 0–1 (default 0.0002)' },
+    { name: 'enabled', type: 'boolean', required: false, description: 'Enable or disable fog' },
+  ],
+  handler: (params) => {
+    const viewer = getViewer()
+    if (!viewer) return 'No viewer available'
+    const fog = viewer.scene.fog
+
+    if (params.enabled !== undefined) {
+      fog.enabled = Boolean(params.enabled)
+    }
+
+    if (params.density !== undefined) {
+      const d = Number(params.density)
+      if (!isNaN(d)) {
+        fog.density = Math.max(0, Math.min(1, d))
+      }
+    }
+
+    return `Fog: enabled=${fog.enabled}, density=${fog.density}`
+  },
+}
+
+const setAtmosphere: CommandEntry = {
+  id: 'core:set-atmosphere',
+  name: 'Set atmosphere',
+  module: 'core',
+  category: 'view',
+  description: 'Adjust atmosphere brightness and saturation shifts',
+  patterns: ['set atmosphere', 'atmosphere brightness {brightness}', 'atmosphere saturation {saturation}', 'atmosphere {brightness} {saturation}'],
+  params: [
+    { name: 'brightness', type: 'number', required: false, description: 'Brightness shift -1 to 1' },
+    { name: 'saturation', type: 'number', required: false, description: 'Saturation shift -1 to 1' },
+  ],
+  handler: (params) => {
+    const viewer = getViewer()
+    if (!viewer) return 'No viewer available'
+    const atmo = viewer.scene.atmosphere
+
+    if (params.brightness !== undefined) {
+      const b = Number(params.brightness)
+      if (!isNaN(b)) {
+        atmo.brightnessShift = Math.max(-1, Math.min(1, b))
+      }
+    }
+
+    if (params.saturation !== undefined) {
+      const s = Number(params.saturation)
+      if (!isNaN(s)) {
+        atmo.saturationShift = Math.max(-1, Math.min(1, s))
+      }
+    }
+
+    return `Atmosphere: brightnessShift=${atmo.brightnessShift}, saturationShift=${atmo.saturationShift}`
+  },
+}
+
 const setTimeOfDay: CommandEntry = {
   id: 'core:set-time',
   name: 'Set time of day',
@@ -1262,7 +1327,7 @@ const setDateCmd: CommandEntry = {
 /** All core commands */
 export const coreCommands: CommandEntry[] = [
   goTo, resetView, zoomIn, zoomOut, zoomTo, faceDirection, lookAt, orbit,
-  toggleBuildings, toggleTerrain, toggleLighting, toggleWater, toggleShadows, setTimeOfDay,
+  toggleBuildings, toggleTerrain, toggleLighting, toggleWater, toggleShadows, setFog, setAtmosphere, setTimeOfDay,
   baseMap, listBaseMaps,
   muteToggle, whatCanYouDo, fullscreen, listProviders, pullModel, setProvider, setCesiumToken,
   postMessage, readMessages,
