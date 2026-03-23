@@ -258,10 +258,14 @@ function Invoke-Claude {
 function Invoke-ClaudeDocker {
     param([string]$Prompt, [string]$WorktreePath, [string]$Phase)
 
+    $claudeHome = Join-Path $env:USERPROFILE ".claude"
+    $claudeJson = Join-Path $env:USERPROFILE ".claude.json"
     $dockerArgs = @(
-        "run", "--rm", "-i",
+        "run", "--rm",
         "-v", "${WorktreePath}:/workspace",
         "-v", "${projectRoot}\node_modules:/workspace/node_modules:ro",
+        "-v", "${claudeHome}:/home/claude/.claude:ro",
+        "-v", "${claudeJson}:/home/claude/.claude.json:ro",
         "-e", "ANTHROPIC_API_KEY=$env:ANTHROPIC_API_KEY"
     )
     if ($Model) { $dockerArgs += @("-e", "CLAUDE_MODEL=$Model") }

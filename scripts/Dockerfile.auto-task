@@ -15,12 +15,13 @@ RUN apt-get update && apt-get install -y \
 # Install Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code
 
-# Create workspace
-WORKDIR /workspace
+# Create non-root user (claude can't run --dangerously-skip-permissions as root)
+RUN useradd -m -s /bin/bash claude && \
+    mkdir -p /workspace && \
+    chown claude:claude /workspace
 
-# The project is mounted at /workspace at runtime
-# node_modules is mounted read-only to avoid reinstall
-# Claude's API key is passed as env var
+USER claude
+WORKDIR /workspace
 
 # Default: run Claude with full autonomy inside the sandbox
 ENTRYPOINT ["claude", "-p", "--dangerously-skip-permissions"]
