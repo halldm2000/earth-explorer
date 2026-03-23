@@ -187,6 +187,32 @@ let _dataSource: Cesium.CustomDataSource | null = null
 function getOrCreateDataSource(viewer: Cesium.Viewer): Cesium.CustomDataSource {
   if (_dataSource) return _dataSource
   _dataSource = new Cesium.CustomDataSource('flight-tracker')
+
+  // Enable entity clustering for performance with thousands of aircraft
+  _dataSource.clustering.enabled = true
+  _dataSource.clustering.pixelRange = 40
+  _dataSource.clustering.minimumClusterSize = 4
+  _dataSource.clustering.clusterBillboards = true
+  _dataSource.clustering.clusterLabels = true
+  _dataSource.clustering.clusterPoints = true
+
+  // Style cluster labels to show entity count
+  _dataSource.clustering.clusterEvent.addEventListener(
+    (clusteredEntities: Cesium.Entity[], cluster: { billboard: Cesium.Billboard; label: Cesium.Label; point: Cesium.PointPrimitive }) => {
+      cluster.label.show = true
+      cluster.label.text = clusteredEntities.length.toString()
+      cluster.label.font = '14px sans-serif'
+      cluster.label.fillColor = Cesium.Color.WHITE
+      cluster.label.outlineColor = Cesium.Color.BLACK
+      cluster.label.outlineWidth = 2
+      cluster.label.style = Cesium.LabelStyle.FILL_AND_OUTLINE
+      cluster.label.verticalOrigin = Cesium.VerticalOrigin.CENTER
+      cluster.label.horizontalOrigin = Cesium.HorizontalOrigin.CENTER
+      cluster.billboard.show = false
+      cluster.point.show = false
+    }
+  )
+
   viewer.dataSources.add(_dataSource)
   return _dataSource
 }
