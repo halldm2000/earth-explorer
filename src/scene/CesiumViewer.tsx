@@ -10,9 +10,10 @@ const HOME = { lon: 10, lat: 30, height: 20_000_000, heading: 0, pitch: -90 }
 // ── Scene toggle state (exported for Toolbar) ──
 let _lighting = true
 let _atmosphere = true
+let _shadows = false
 const _sceneListeners = new Set<() => void>()
 function notifyScene() { for (const fn of _sceneListeners) fn() }
-export function getSceneToggles() { return { lighting: _lighting, atmosphere: _atmosphere } }
+export function getSceneToggles() { return { lighting: _lighting, atmosphere: _atmosphere, shadows: _shadows } }
 export function subscribeScene(fn: () => void): () => void {
   _sceneListeners.add(fn)
   return () => _sceneListeners.delete(fn)
@@ -33,6 +34,13 @@ export function toggleSceneAtmosphere(): void {
   scene.globe.showGroundAtmosphere = on
   if (scene.skyAtmosphere) scene.skyAtmosphere.show = on
   _atmosphere = on; notifyScene()
+}
+export function toggleSceneShadows(): void {
+  const viewer = getViewer()
+  if (!viewer) return
+  const on = !viewer.shadows
+  viewer.shadows = on
+  _shadows = on; notifyScene()
 }
 
 export function CesiumViewer() {
@@ -109,6 +117,7 @@ export function CesiumViewer() {
       // Apply quality preset (shadows, bloom, AO, FXAA, resolution scale)
       const initialPreset = useStore.getState().qualityPreset
       applyQualityPreset(initialPreset)
+      _shadows = viewer.shadows
 
       // Time
       viewer.clock.currentTime = Cesium.JulianDate.fromDate(new Date())
