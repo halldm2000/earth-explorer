@@ -106,13 +106,13 @@ function Log {
     $line | Out-File -FilePath $logFile -Append -Encoding utf8
 }
 
-# Timer helper
+# Timer helper — runs block, returns elapsed seconds only (no pipeline pollution)
 function Measure-Phase {
     param([scriptblock]$Block)
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    & $Block
+    & $Block | Out-Null
     $sw.Stop()
-    return [math]::Round($sw.Elapsed.TotalSeconds, 1)
+    [math]::Round($sw.Elapsed.TotalSeconds, 1)
 }
 
 # Desktop notification (Windows toast)
@@ -321,12 +321,14 @@ function Invoke-Claude {
     if ($Turns -gt 0) { $claudeArgs += @("--max-turns", $Turns) }
 
     Push-Location $WorkDir
-    # Run claude and capture output to file + console
-    # Use a temp file to avoid Tee-Object clobbering $LASTEXITCODE
+    # Run claude, capture to temp file, then display + log (no pipeline output)
     $tempOut = [System.IO.Path]::GetTempFileName()
     & claude @claudeArgs 2>&1 > $tempOut
     $script:lastExit = $LASTEXITCODE
-    Get-Content $tempOut | Tee-Object -FilePath $logFile -Append
+    Get-Content $tempOut | ForEach-Object {
+        Write-Host $_
+        $_ | Out-File -FilePath $logFile -Append -Encoding utf8
+    }
     Remove-Item $tempOut -ErrorAction SilentlyContinue
     Pop-Location
 }
@@ -376,11 +378,14 @@ function Invoke-ClaudeDocker {
     # We pass extra args: [--max-turns N] "prompt"
     $dockerArgs += @("worldscope-task") + $claudeExtraArgs
 
-    # Capture exit code before piping
+    # Run docker, capture to temp file, then display + log (no pipeline output)
     $tempOut = [System.IO.Path]::GetTempFileName()
     & docker @dockerArgs 2>&1 > $tempOut
     $script:lastExit = $LASTEXITCODE
-    Get-Content $tempOut | Tee-Object -FilePath $logFile -Append
+    Get-Content $tempOut | ForEach-Object {
+        Write-Host $_
+        $_ | Out-File -FilePath $logFile -Append -Encoding utf8
+    }
     Remove-Item $tempOut -ErrorAction SilentlyContinue
 }
 
@@ -416,7 +421,16 @@ function Get-DiffStats {
 $worktreePath = "$worktreeBase\$branchSafe"
 
 if (-not $NoWorktree) {
+    # Clean up stale worktree/branch if they exist from a previous failed run
+    if (Test-Path $worktreePath) {
+        Log "Cleaning up stale worktree: $branchSafe" "Gray"
+        Push-Location $projectRoot
+        git worktree remove $worktreePath --force 2>$null
+        Pop-Location
+    }
     Push-Location $projectRoot
+    git branch -D $Branch 2>$null
+    git worktree prune 2>$null
     git worktree add $worktreePath -b $Branch 2>&1 | ForEach-Object { Log $_ "Gray" }
     Pop-Location
 
